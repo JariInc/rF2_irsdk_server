@@ -23,7 +23,7 @@
 
 
 // This is used for the app to use the plugin for its intended purpose
-class rf2plugin : public InternalsPluginV01
+class rf2plugin : public InternalsPluginV03
 {
 
  public:
@@ -44,16 +44,16 @@ class rf2plugin : public InternalsPluginV01
   void EndSession();             // session has ended
 
   // GAME OUTPUT
-  long WantsTelemetryUpdates() { return( 1 ); } // CHANGE TO 1 TO ENABLE TELEMETRY EXAMPLE!
+  long WantsTelemetryUpdates() { return( true ); } // CHANGE TO 1 TO ENABLE TELEMETRY EXAMPLE!
   void UpdateTelemetry( const TelemInfoV01 &info );
 
-  bool WantsGraphicsUpdates() { return( false ); } // CHANGE TO TRUE TO ENABLE GRAPHICS EXAMPLE!
-  void UpdateGraphics( const GraphicsInfoV01 &info );
+  bool WantsGraphicsUpdates() { return( true ); } // CHANGE TO TRUE TO ENABLE GRAPHICS EXAMPLE!
+  void UpdateGraphics( const GraphicsInfoV02 &info );
 
   // GAME INPUT
   bool HasHardwareInputs() { return( false ); } // CHANGE TO TRUE TO ENABLE HARDWARE EXAMPLE!
   void UpdateHardware( const float fDT ) { mET += fDT; } // update the hardware with the time between frames
-  void EnableHardware() { mEnabled = true; }             // message from game to enable hardware
+  void EnableHardware() { mEnabled = false; }             // message from game to enable hardware
   void DisableHardware() { mEnabled = false; }           // message from game to disable hardware
 
   // See if the plugin wants to take over a hardware control.  If the plugin takes over the
@@ -64,7 +64,7 @@ class rf2plugin : public InternalsPluginV01
   bool ForceFeedback( float &forceValue );  // SEE FUNCTION BODY TO ENABLE FORCE EXAMPLE
 
   // SCORING OUTPUT
-  bool WantsScoringUpdates() { return( false ); } // CHANGE TO TRUE TO ENABLE SCORING EXAMPLE!
+  bool WantsScoringUpdates() { return( true ); } // CHANGE TO TRUE TO ENABLE SCORING EXAMPLE!
   void UpdateScoring( const ScoringInfoV01 &info );
 
   // COMMENTARY INPUT
@@ -79,8 +79,6 @@ class rf2plugin : public InternalsPluginV01
   virtual void VideoWriteImage( const unsigned char *pImage ) {} // write video image
 
  private:
-
-  void WriteToAllExampleOutputFiles( const char * const openStr, const char * const msg );
   float mET;  // needed for the hardware example
   bool mEnabled; // needed for the hardware example
 };

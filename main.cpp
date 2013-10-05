@@ -50,16 +50,15 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // plugin information
 extern "C" __declspec( dllexport )
-const char * __cdecl GetPluginName()                   { return( "ExamplePlugin - 2008.02.13" ); }
+const char * __cdecl GetPluginName()                   { return( "irsdk_server" ); }
 extern "C" __declspec( dllexport )
 PluginObjectType __cdecl GetPluginType()               { return( PO_INTERNALS ); }
 extern "C" __declspec( dllexport )
-int __cdecl GetPluginVersion()                         { return( 1 ); } // InternalsPluginV01 functionality
+int __cdecl GetPluginVersion()                         { return( 3 ); } // InternalsPluginV03 functionality
 extern "C" __declspec( dllexport )
 PluginObject * __cdecl CreatePluginObject()            { return( (PluginObject *) new rf2plugin ); }
 extern "C" __declspec( dllexport )
 void __cdecl DestroyPluginObject( PluginObject *obj )  { delete( (rf2plugin *) obj ); }
-
 
 void rf2plugin::Startup( long version )
 {
@@ -113,11 +112,13 @@ void rf2plugin::UpdateTelemetry( const TelemInfoV01 &info )
 
 		// update our data...
 		g_sessionTime = info.mElapsedTime;
+		g_replaySessionTime = info.mElapsedTime;
 		g_lap = info.mLapNumber;
+		g_replayFrameNum = (int)floor(g_sessionTime * 60);
 
 		// use these to turn disk based logging on and off
-		if(!irsdkServer::instance()->isDiskLoggingEnabled()) // disk logging is turned on
-			irsdkServer::instance()->toggleDiskLogging(); // turn logging on or off
+		//if(!irsdkServer::instance()->isDiskLoggingEnabled()) // disk logging is turned on
+		//	irsdkServer::instance()->toggleDiskLogging(); // turn logging on or off
 		//irsdkServer::instance()->isDiskLoggingActive(); // disk logging is actively writting to disk
 	}
 
@@ -222,8 +223,9 @@ void rf2plugin::UpdateTelemetry( const TelemInfoV01 &info )
 }
 
 
-void rf2plugin::UpdateGraphics( const GraphicsInfoV01 &info )
+void rf2plugin::UpdateGraphics( const GraphicsInfoV02 &info )
 {
+	g_camcaridx = info.mID + 1; 
 	/*
   // Use the incoming data, for now I'll just write some of it to a file to a) make sure it
   // is working, and b) explain the coordinate system a little bit (see header for more info)
@@ -294,7 +296,6 @@ bool rf2plugin::ForceFeedback( float &forceValue )
 //  return( true );
 }
 
-
 void rf2plugin::UpdateScoring( const ScoringInfoV01 &info )
 {
 	// update data realtime
@@ -348,13 +349,19 @@ void rf2plugin::UpdateScoring( const ScoringInfoV01 &info )
 	VehicleScoringInfoV01 &leader = info.mVehicle[1];
 	g_sessionLapsRemain = info.mMaxLaps - leader.mTotalLaps;
 
+	for( long i = 0; i < info.mNumVehicles; ++i )
+    {
+		VehicleScoringInfoV01 &vinfo = info.mVehicle[i];
+		g_carIdxLapDistPct[i] = vinfo.mLapDist;
+		g_carIdxLap[i] = vinfo.mTotalLaps;
+	}
+
 	// update YAML
-	// Start of YAML file
-	if(YAMLupdate(info))
-		irsdkServer::instance()->regSessionInfo(YAMLstring);
+	YAMLupdate(info);
+
 	/*
   // Note: function is called twice per second now (instead of once per second in previous versions)
-  FILE *fo = fopen( "ExampleInternalsScoringOutput.txt", "a" );
+  FILE *fo = fopen( "c:\\temp\\ExampleInternalsScoringOutput.txt", "a" );
   if( fo != NULL )
   {
     // Print general scoring info

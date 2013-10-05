@@ -97,6 +97,7 @@
   <ItemGroup>
     <ClInclude Include="..\irsdk_defines.h" />
     <ClInclude Include="api_variables.h" />
+    <ClInclude Include="djb2.h" />
     <ClInclude Include="InternalsPlugin.hpp" />
     <ClInclude Include="irsdk_defines.h" />
     <ClInclude Include="irsdk_diskserver.h" />
@@ -109,6 +110,7 @@
     <ClInclude Include="yaml_parser.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="djb2.cpp" />
     <ClCompile Include="irsdk_diskserver.cpp" />
     <ClCompile Include="irsdk_memserver.cpp" />
     <ClCompile Include="irsdk_server.cpp" />

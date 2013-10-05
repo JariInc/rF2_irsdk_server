@@ -4,6 +4,13 @@
 #include "irsdk_server.h"
 #include "rf2plugin.hpp"
 
+// Macros
+#define YPRINT(...)  len += _snprintf(YAMLstring+len, YAMLstring_len-len, __VA_ARGS__)
+
+// limits
+#define MAX_CARS 64
+#define MAX_SESSIONS 14
+
 // YAML structs
 struct WeekendOptions {
 	int NumStarters;
@@ -30,7 +37,7 @@ struct WeekendOptions {
 
 struct WeekendInfo {
 	char TrackName[IRSDK_MAX_STRING];
-	int TrackID;
+	unsigned int TrackID;
 	float TrackLength;
 	char TrackDisplayName[IRSDK_MAX_STRING];
 	char TrackDisplayShortName[IRSDK_MAX_STRING];
@@ -64,13 +71,99 @@ struct WeekendInfo {
 	WeekendOptions WeekendOptions;
 };
 
+struct ResultPosition {
+	int Position;
+	int ClassPosition;
+	int CarIdx;
+	int Lap;
+	float Time;			// laptime with 10ms accuracy can be 8388 seconds using floats, enough I guess
+	int FastestLap;
+	float FastestTime;
+	float LastTime;
+	int LapsLed;
+	int LapsComplete;
+	float LapsDriven;
+	int Incidents;
+	int ReasonOutId;
+	char ReasonOutStr[IRSDK_MAX_STRING];	
+};
+
+struct ResultsFastestLap {
+	int CarIdx;
+	int FastestLap;
+	float FastestTime;
+};
+
+struct Session {
+	int SessionNum;
+	char SessionLaps[IRSDK_MAX_STRING];
+	float SessionTime;
+	int SessionNumLapsToAvg;
+	char SessionType[IRSDK_MAX_STRING];
+	ResultPosition ResultsPositions[MAX_CARS];
+	ResultsFastestLap ResultsFastestLap;
+	float ResultsAverageLapTime;
+	int ResultsNumCautionFlags;
+	int ResultsNumCautionLaps;
+	int ResultsNumLeadChanges;
+	int ResultsLapsComplete;
+	int ResultsOfficial;
+};
+
+struct SessionInfo {
+	Session Sessions[MAX_SESSIONS]; // see ScoringInfoV01.mSession (0=testday 1-4=practice 5-8=qual 9=warmup 10-13=race)
+};
+
+struct Driver {
+	int CarIdx;
+	char UserName[IRSDK_MAX_STRING];
+	char AbbrevName[IRSDK_MAX_STRING];
+	char Initials[IRSDK_MAX_STRING];
+	int UserID;
+	int CarNumber;
+	char CarPath[IRSDK_MAX_STRING];
+	int CarClassID;
+	int CarID;
+	char CarClassShortName[IRSDK_MAX_STRING];
+	int CarClassRelSpeed;
+	int CarClassLicenseLevel;
+	float CarClassMaxFuel;
+	float CarClassWeightPenalty;
+	int IRating;
+	int LicLevel;
+	int LicSubLevel;
+	char LicColor[IRSDK_MAX_STRING];
+	char ClubName[IRSDK_MAX_STRING];
+	char DivisionName[IRSDK_MAX_STRING];
+};
+
+struct DriverInfo {
+	int DriverCarIdx;
+	float DriverHeadPosX;
+	float DriverHeadPosY;
+	float DriverHeadPosZ;
+	float DriverCarRedLine;
+	float DriverCarFuelKgPerLtr;
+	float DriverCarSLFirstRPM;
+	float DriverCarSLShiftRPM;
+	float DriverCarSLLastRPM;
+	float DriverCarSLBlinkRPM;
+	float DriverPitTrkPct;
+	Driver Drivers[MAX_CARS];
+};
+
 // function prototypes
-bool YAMLupdate(const ScoringInfoV01 &info);
-bool YAMLupdate(const TelemInfoV01 &info);
+void YAMLupdate(const ScoringInfoV01 &info);
+void YAMLupdate(const TelemInfoV01 &info);
+void YAMLgenerate();
 
 // static variables
 static const int YAMLstring_len = irsdkServer::sessionStrLen;
 static char YAMLstring[YAMLstring_len] = "";
-static WeekendInfo weekendinfo;
+static unsigned int YAMLchecksum = 0;
+
+static WeekendInfo weekendinfo = {0};
+static SessionInfo sessioninfo = {0};
+static DriverInfo driverinfo = {0};
 
 #endif //YAML_H

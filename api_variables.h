@@ -16,7 +16,7 @@ static irsdkVar irsdkManualSet("ManualSet", NULL, irsdk_bool, 1, "Manually set a
 */
 
 // Session parameters
-static double g_sessionTime = 0.0;
+static double g_sessionTime = 0;
 static irsdkVar irsdkSessionTime("SessionTime", &g_sessionTime, irsdk_double, 1, "Seconds since session start", "s", IRSDK_LOG_ALL);
 
 static int g_sessionNum = 0;
@@ -39,5 +39,21 @@ static irsdkVar irsdkSessionLapsRemain("SessionLapsRemain", &g_sessionLapsRemain
 
 static int g_lap = 0;
 static irsdkVar irsdkLap("Lap", &g_lap, irsdk_int, 1, "Lap count", "", IRSDK_LOG_ALL);
+
+static int g_camcaridx = 0;
+static irsdkVar irsdkCamCarIdx("CamCarIdx", &g_camcaridx, irsdk_int, 1, "Active camera's focus car index", "", IRSDK_LOG_ALL);
+
+static int g_replayFrameNum = 0;
+static irsdkVar irsdkReplayFrameNum("ReplayFrameNum", &g_replayFrameNum, irsdk_int, 1, "Integer replay frame number (60 per second)", "", IRSDK_LOG_ALL);
+
+static double g_replaySessionTime = 0;
+static irsdkVar irsdkReplaySessionTime("ReplaySessionTime", &g_replaySessionTime, irsdk_double, 1, "Seconds since replay session start", "s", IRSDK_LOG_ALL);
+
+static float g_carIdxLapDistPct[64] = { -1.0f };
+static irsdkVar irsdkCarIdxLapDistPct("CarIdxLapDistPct", &g_carIdxLapDistPct, irsdk_float, 64, "Percentage distance around lap by car index", "%", IRSDK_LOG_ALL);
+
+static int g_carIdxLap[64] = { -1.0f };
+static irsdkVar irsdkCarIdxLap("CarIdxLap", &g_carIdxLap, irsdk_int, 64, "Lap count by car index", "", IRSDK_LOG_ALL);
+
 
 #endif //APIVARS_DEFINES_H
