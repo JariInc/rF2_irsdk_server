@@ -20,6 +20,8 @@
 #define _INTERNALS_EXAMPLE_H
 
 #include "InternalsPlugin.hpp"
+#include "irsdk_server.h"
+#include "yaml.h"
 
 
 // This is used for the app to use the plugin for its intended purpose
@@ -29,7 +31,24 @@ class rf2plugin : public InternalsPluginV03
  public:
 
   // Constructor/destructor
-  rf2plugin() {}
+  rf2plugin() {
+	  irsdkSessionTime = irsdkVar("SessionTime", &g_sessionTime, irsdk_double, 1, "Seconds since session start", "s", IRSDK_LOG_ALL, 1, 0);
+	  irsdkSessionNum = irsdkVar("SessionNum", &g_sessionNum, irsdk_int, 1, "Session number", "", IRSDK_LOG_ALL);
+	  irsdkSessionState = irsdkVar("SessionState", &g_sessionState, irsdk_int, 1, "Session state", "irsdk_SessionState", IRSDK_LOG_ALL);
+	  irsdkSessionUniqueID = irsdkVar("SessionUniqueID", &g_sessionUniqueID, irsdk_int, 1, "Session ID", "", IRSDK_LOG_ALL);
+	  irsdkSessionFlags = irsdkVar("SessionFlags", &g_sessionFlags, irsdk_bitField, 1, "Session flags", "irsdk_Flags", IRSDK_LOG_ALL);
+      irsdkSessionTimeRemain = irsdkVar("SessionTimeRemain", &g_sessionTimeRemain, irsdk_double, 1, "Seconds left till session ends", "s", IRSDK_LOG_ALL);
+	  irsdkSessionLapsRemain = irsdkVar("SessionLapsRemain", &g_sessionLapsRemain, irsdk_int, 1, "Laps left till session ends", "", IRSDK_LOG_ALL);
+	  irsdkLap = irsdkVar("Lap", &g_lap, irsdk_int, 1, "Lap count", "", IRSDK_LOG_ALL);
+	  irsdkCamCarIdx = irsdkVar("CamCarIdx", &g_camcaridx, irsdk_int, 1, "Active camera's focus car index", "", IRSDK_LOG_ALL);
+	  irsdkCamGroupNumber = irsdkVar("CamGroupNumber", &g_camgroupnumber, irsdk_int, 1, "Active camera group number", "", IRSDK_LOG_ALL);
+	  irsdkReplayFrameNum = irsdkVar("ReplayFrameNum", &g_replayFrameNum, irsdk_int, 1, "Integer replay frame number (60 per second)", "", IRSDK_LOG_ALL);
+	  irsdkReplaySessionTime = irsdkVar("ReplaySessionTime", &g_replaySessionTime, irsdk_double, 1, "Seconds since replay session start", "s", IRSDK_LOG_ALL);
+	  irsdkCarIdxLapDistPct = irsdkVar("CarIdxLapDistPct", &g_carIdxLapDistPct, irsdk_float, 64, "Percentage distance around lap by car index", "%", IRSDK_LOG_ALL);
+	  irsdkCarIdxLap = irsdkVar("CarIdxLap", &g_carIdxLap, irsdk_int, 64, "Lap count by car index", "", IRSDK_LOG_ALL);
+	  irsdkCarIdxTrackSurface = irsdkVar("CarIdxTrackSurface", &g_carIdxLap, irsdk_int, 64, "Track surface type by car index", "", IRSDK_LOG_ALL);
+
+  }
   ~rf2plugin() {}
 
   // These are the functions derived from base class InternalsPlugin
@@ -52,7 +71,7 @@ class rf2plugin : public InternalsPluginV03
 
   // GAME INPUT
   bool HasHardwareInputs() { return( false ); } // CHANGE TO TRUE TO ENABLE HARDWARE EXAMPLE!
-  void UpdateHardware( const float fDT ) { mET += fDT; } // update the hardware with the time between frames
+  void UpdateHardware( const float fDT ) { } // update the hardware with the time between frames
   void EnableHardware() { mEnabled = false; }             // message from game to enable hardware
   void DisableHardware() { mEnabled = false; }           // message from game to disable hardware
 
@@ -78,9 +97,73 @@ class rf2plugin : public InternalsPluginV03
   virtual void VideoWriteAudio( const short *pAudio, unsigned int uNumFrames ) {} // write some audio info
   virtual void VideoWriteImage( const unsigned char *pImage ) {} // write video image
 
+  void YAMLupdate(const ScoringInfoV01 &info);
+  //void YAMLupdate(const TelemInfoV01 &info);
+  void YAMLgenerate();
+
  private:
-  float mET;  // needed for the hardware example
   bool mEnabled; // needed for the hardware example
+
+  static char YAMLstring[irsdkServer::sessionStrLen];
+  static int YAMLstring_maxlen;
+  static int YAMLstring_len;
+  static unsigned int YAMLchecksum;
+
+  static WeekendInfo weekendinfo;
+  static SessionInfo sessioninfo;
+  static DriverInfo driverinfo;
+
+
+  // Real time telemetry variables
+
+  // session data
+  double g_sessionTime;
+  irsdkVar irsdkSessionTime;
+
+  int g_sessionNum;
+  irsdkVar irsdkSessionNum;
+
+  int g_sessionState;
+  irsdkVar irsdkSessionState;
+
+  int g_sessionUniqueID;
+  irsdkVar irsdkSessionUniqueID;
+
+  int g_sessionFlags;
+  irsdkVar irsdkSessionFlags;
+
+  double g_sessionTimeRemain;
+  irsdkVar irsdkSessionTimeRemain;
+
+  int g_sessionLapsRemain;
+  irsdkVar irsdkSessionLapsRemain;
+
+  int g_lap;
+  irsdkVar irsdkLap;
+
+  // cameras and replay
+  int g_camcaridx;
+  irsdkVar irsdkCamCarIdx;
+
+  int g_camgroupnumber;
+  irsdkVar irsdkCamGroupNumber;
+
+  int g_replayFrameNum;
+  irsdkVar irsdkReplayFrameNum;
+
+  double g_replaySessionTime;
+  irsdkVar irsdkReplaySessionTime;
+
+  // drivers
+  float g_carIdxLapDistPct[64];
+  irsdkVar irsdkCarIdxLapDistPct;
+
+  int g_carIdxLap[64];
+  irsdkVar irsdkCarIdxLap;
+
+  int g_carIdxTrackSurface[64];
+  irsdkVar irsdkCarIdxTrackSurface;
+
 };
 
 

@@ -2,10 +2,9 @@
 #define YAML_H
 
 #include "irsdk_server.h"
-#include "rf2plugin.hpp"
 
 // Macros
-#define YPRINT(...)  len += _snprintf(YAMLstring+len, YAMLstring_len-len, __VA_ARGS__)
+#define YPRINT(...)  len += _snprintf(YAMLstring+len, YAMLstring_maxlen-len, __VA_ARGS__)
 
 // limits
 #define MAX_CARS 64
@@ -151,19 +150,5 @@ struct DriverInfo {
 	float DriverPitTrkPct;
 	Driver Drivers[MAX_CARS];
 };
-
-// function prototypes
-void YAMLupdate(const ScoringInfoV01 &info);
-void YAMLupdate(const TelemInfoV01 &info);
-void YAMLgenerate();
-
-// static variables
-static const int YAMLstring_len = irsdkServer::sessionStrLen;
-static char YAMLstring[YAMLstring_len] = "";
-static unsigned int YAMLchecksum = 0;
-
-static WeekendInfo weekendinfo = {0};
-static SessionInfo sessioninfo = {0};
-static DriverInfo driverinfo = {0};
 
 #endif //YAML_H

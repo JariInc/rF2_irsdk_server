@@ -17,7 +17,6 @@
     <ClInclude Include="InternalsPlugin.hpp" />
     <ClInclude Include="PluginObjects.hpp" />
     <ClInclude Include="rf2plugin.hpp" />
-    <ClInclude Include="api_variables.h" />
     <ClInclude Include="yaml.h" />
     <ClInclude Include="MurmurHash3.h" />
     <ClInclude Include="djb2.h" />

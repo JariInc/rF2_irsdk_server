@@ -30,7 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "irsdk_defines.h"
 
-static const int TICKS_PER_SEC = 100;
+static const int TICKS_PER_SEC = 50;
 
 static const int IRSDK_MAX_VARS = 4096;
 
@@ -135,6 +135,8 @@ public:
 		irsdk_VarType type, int count, 
 		const char *desc, const char *unit,
 		int logMode, float multiplier = 1.0f, float offset = 0.0f);
+
+	irsdkVar() {};
 
 	bool reRegVar(const void *var);
 

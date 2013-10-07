@@ -4,22 +4,25 @@
 #include <assert.h>
 
 #include "djb2.h"
-#include "MurmurHash3.h"
 #include "yaml.h"
-#include "api_variables.h"
+#include "rf2plugin.hpp"
 
+//#include "api_variables.h"
+
+/*
 // telemetry update
-void YAMLupdate(const TelemInfoV01 &info) {
+void rf2plugin::YAMLupdate(const TelemInfoV01 &info) {
 
 }
+*/
 
 // scoring update
-void YAMLupdate(const ScoringInfoV01 &info) {
+void rf2plugin::YAMLupdate(const ScoringInfoV01 &info) {
 	// WeekendInfo
 	strncpy(weekendinfo.TrackName, info.mTrackName, sizeof(info.mTrackName));
 	weekendinfo.WeekendOptions.NumStarters = info.mNumVehicles;
 	weekendinfo.TrackLength = (float)info.mLapDist/1000;
-	weekendinfo.TrackID = djb2((unsigned char *)&info.mTrackName);
+	weekendinfo.TrackID = djb2((unsigned char *)&info.mTrackName) & 0xFFFFFF;
 
 	if(info.mDarkCloud < 0.25)
 		strcpy (weekendinfo.TrackSkies, "Clear");
@@ -124,9 +127,9 @@ void YAMLupdate(const ScoringInfoV01 &info) {
 		}
 
 		driverinfo.Drivers[i].CarIdx = vinfo.mID+1;
-		driverinfo.Drivers[i].UserID = djb2((unsigned char *)&info.mTrackName);
-		driverinfo.Drivers[i].CarID = djb2((unsigned char *)&vinfo.mVehicleName);
-		driverinfo.Drivers[i].CarClassID = djb2((unsigned char *)&vinfo.mVehicleClass);
+		driverinfo.Drivers[i].UserID = djb2((unsigned char *)&vinfo.mDriverName) & 0xFFFFFF;
+		driverinfo.Drivers[i].CarID = djb2((unsigned char *)&vinfo.mVehicleName) & 0xFFFFFF;
+		driverinfo.Drivers[i].CarClassID = djb2((unsigned char *)&vinfo.mVehicleClass) & 0xFFFFFF;
 		strcpy(driverinfo.Drivers[i].UserName, vinfo.mDriverName);
 		strcpy(driverinfo.Drivers[i].CarPath, vinfo.mVehicleName);
 		strcpy(driverinfo.Drivers[i].CarClassShortName, vinfo.mVehicleClass);
@@ -139,7 +142,7 @@ void YAMLupdate(const ScoringInfoV01 &info) {
 	YAMLgenerate();
 }
 
-void YAMLgenerate() {
+void rf2plugin::YAMLgenerate() {
 	int len = 0;
 
 	YPRINT("---\n");
@@ -208,7 +211,7 @@ void YAMLgenerate() {
 	YPRINT(" Sessions:\n");
 	for(int i = 0; i < MAX_SESSIONS; i++) {
 		if(sessioninfo.Sessions[i].SessionTime > 0.0f) {
-			YPRINT(" - SessionsNum: %i\n", sessioninfo.Sessions[i].SessionNum);
+			YPRINT(" - SessionNum: %i\n", sessioninfo.Sessions[i].SessionNum);
 			YPRINT("   SessionLaps: %s\n", sessioninfo.Sessions[i].SessionLaps);
 			YPRINT("   SessionTime: %3.2f\n", sessioninfo.Sessions[i].SessionTime);
 			YPRINT("   SessionNumLapsToAvg: %i\n", sessioninfo.Sessions[i].SessionNumLapsToAvg);
@@ -219,10 +222,6 @@ void YAMLgenerate() {
 			YPRINT("   ResultsNumLeadChanges: %i\n", sessioninfo.Sessions[i].ResultsNumLeadChanges);
 			YPRINT("   ResultsLapsComplete: %i\n", sessioninfo.Sessions[i].ResultsLapsComplete);
 			YPRINT("   ResultsOfficial: %i\n", sessioninfo.Sessions[i].ResultsOfficial);
-			YPRINT("   ResultsFastestLap:\n");
-			YPRINT("   - CarIdx: %i\n", sessioninfo.Sessions[i].ResultsFastestLap.CarIdx);
-			YPRINT("     FastestLap: %i\n", sessioninfo.Sessions[i].ResultsFastestLap.FastestLap);
-			YPRINT("     FastestTime: %4.3f\n", sessioninfo.Sessions[i].ResultsFastestLap.FastestTime);
 			YPRINT("   ResultsPositions:\n");
 			for(int j = 0; j < MAX_CARS; j++) {
 				if(sessioninfo.Sessions[i].ResultsPositions[j].CarIdx > 0) {
@@ -242,6 +241,10 @@ void YAMLgenerate() {
 					YPRINT("     ReasonOutStr: %s\n", sessioninfo.Sessions[i].ResultsPositions[j].ReasonOutStr);
 				}
 			}
+			YPRINT("   ResultsFastestLap:\n");
+			YPRINT("   - CarIdx: %i\n", sessioninfo.Sessions[i].ResultsFastestLap.CarIdx);
+			YPRINT("     FastestLap: %i\n", sessioninfo.Sessions[i].ResultsFastestLap.FastestLap);
+			YPRINT("     FastestTime: %4.3f\n", sessioninfo.Sessions[i].ResultsFastestLap.FastestTime);
 		}
 	}
 	YPRINT("\n");
@@ -325,18 +328,9 @@ void YAMLgenerate() {
 	// end YAML
 	YPRINT("...\n");
 
-	YAMLstring[YAMLstring_len-1] = '\0';
-	assert(len < (YAMLstring_len-256)); 
+	YAMLstring[YAMLstring_maxlen-1] = '\0';
+	assert(len < (YAMLstring_maxlen-256));
 
-	unsigned int prevchecksum = YAMLchecksum;
-	MurmurHash3_x86_32(YAMLstring, YAMLstring_len, 0, &YAMLchecksum);
-	
-	if(prevchecksum != YAMLchecksum)
-		irsdkServer::instance()->regSessionInfo(YAMLstring);
-
-	FILE *fo = fopen("c:\\temp\\ExampleInternalsYAML.txt", "w");
-	if(fo != NULL)
-		fprintf(fo, "%s", YAMLstring);
-	fclose(fo);
+	YAMLstring_len = len;
 
 }

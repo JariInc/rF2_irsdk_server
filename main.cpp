@@ -46,7 +46,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "irsdk_server.h"
 #include "rf2plugin.hpp"
-#include "api_variables.h"
+#include "MurmurHash3.h"
 
 // plugin information
 extern "C" __declspec( dllexport )
@@ -59,6 +59,15 @@ extern "C" __declspec( dllexport )
 PluginObject * __cdecl CreatePluginObject()            { return( (PluginObject *) new rf2plugin ); }
 extern "C" __declspec( dllexport )
 void __cdecl DestroyPluginObject( PluginObject *obj )  { delete( (rf2plugin *) obj ); }
+
+WeekendInfo rf2plugin::weekendinfo = {0};
+SessionInfo rf2plugin::sessioninfo = {0};
+DriverInfo rf2plugin::driverinfo = {0};
+
+int rf2plugin::YAMLstring_maxlen = irsdkServer::sessionStrLen;
+int rf2plugin::YAMLstring_len = 0;
+char rf2plugin::YAMLstring[irsdkServer::sessionStrLen] = "";
+unsigned int rf2plugin::YAMLchecksum = 0;
 
 void rf2plugin::Startup( long version )
 {
@@ -92,40 +101,33 @@ void rf2plugin::ExitRealtime()
 {
 }
 
-
 void rf2plugin::UpdateTelemetry( const TelemInfoV01 &info )
 {
-	// before going into your main data output loop, you must mark the headers as final
-	// it is possible for finalizeHeader() to fail, so try every tick, just in case
-	if(!irsdkServer::instance()->isHeaderFinalized())
-		irsdkServer::instance()->finalizeHeader();
+	if(info.mElapsedTime > g_sessionTime) {
+		// before going into your main data output loop, you must mark the headers as final
+		// it is possible for finalizeHeader() to fail, so try every tick, just in case
+		if(!irsdkServer::instance()->isHeaderFinalized())
+			irsdkServer::instance()->finalizeHeader();
 
-	// reset the data for this pass, if something is not updated
-	// we will output zero for that tick
-	if(irsdkServer::instance()->isInitialized())
-		irsdkServer::instance()->resetSampleVars();
+		if(irsdkServer::instance()->isHeaderFinalized())
+		{
+			// read out variables that have registered with pointers back to them
+			irsdkServer::instance()->pollSampleVars();
 
-	if(irsdkServer::instance()->isHeaderFinalized())
-	{
-		// read out variables that have registered with pointers back to them
-		irsdkServer::instance()->pollSampleVars();
+			// update our data...
+			g_sessionTime = info.mElapsedTime;
+			g_replaySessionTime = info.mElapsedTime;
+			g_lap = info.mLapNumber;
+			g_replayFrameNum = (int)floor(g_sessionTime * TICKS_PER_SEC);
 
-		// update our data...
-		g_sessionTime = info.mElapsedTime;
-		g_replaySessionTime = info.mElapsedTime;
-		g_lap = info.mLapNumber;
-		g_replayFrameNum = (int)floor(g_sessionTime * 60);
-
-		// use these to turn disk based logging on and off
-		//if(!irsdkServer::instance()->isDiskLoggingEnabled()) // disk logging is turned on
-		//	irsdkServer::instance()->toggleDiskLogging(); // turn logging on or off
-		//irsdkServer::instance()->isDiskLoggingActive(); // disk logging is actively writting to disk
+			/*
+			// use these to turn disk based logging on and off
+			if(!irsdkServer::instance()->isDiskLoggingEnabled()) // disk logging is turned on
+				irsdkServer::instance()->toggleDiskLogging(); // turn logging on or off
+			//irsdkServer::instance()->isDiskLoggingActive(); // disk logging is actively writting to disk
+			*/
+		}
 	}
-
-	/*
-	if(YAMLupdate(info))
-		irsdkServer::instance()->regSessionInfo(YAMLstring);
-	*/
 
 	/*
   // Use the incoming data, for now I'll just write some of it to a file to a) make sure it
@@ -226,6 +228,7 @@ void rf2plugin::UpdateTelemetry( const TelemInfoV01 &info )
 void rf2plugin::UpdateGraphics( const GraphicsInfoV02 &info )
 {
 	g_camcaridx = info.mID + 1; 
+	g_camgroupnumber = info.mCameraType;
 	/*
   // Use the incoming data, for now I'll just write some of it to a file to a) make sure it
   // is working, and b) explain the coordinate system a little bit (see header for more info)
@@ -352,12 +355,31 @@ void rf2plugin::UpdateScoring( const ScoringInfoV01 &info )
 	for( long i = 0; i < info.mNumVehicles; ++i )
     {
 		VehicleScoringInfoV01 &vinfo = info.mVehicle[i];
-		g_carIdxLapDistPct[i] = vinfo.mLapDist;
-		g_carIdxLap[i] = vinfo.mTotalLaps;
+		int caridx = vinfo.mID+1;
+		g_carIdxLapDistPct[caridx] = vinfo.mLapDist/info.mLapDist;
+		g_carIdxLap[caridx] = vinfo.mTotalLaps;
+		if(vinfo.mPitState == 3)
+			g_carIdxTrackSurface[caridx] = irsdk_TrkLoc::irsdk_InPitStall;
+		else if(vinfo.mInPits && (vinfo.mLocalVel.x + vinfo.mLocalVel.x) < 0.1)
+			g_carIdxTrackSurface[caridx] = irsdk_TrkLoc::irsdk_NotInWorld;
+		else if(vinfo.mInPits)
+			g_carIdxTrackSurface[caridx] = irsdk_TrkLoc::irsdk_AproachingPits;
+		else
+			g_carIdxTrackSurface[caridx] = irsdk_TrkLoc::irsdk_OnTrack;
 	}
 
 	// update YAML
 	YAMLupdate(info);
+	unsigned int prevchecksum = YAMLchecksum;
+	MurmurHash3_x86_32(YAMLstring, YAMLstring_len, 0, &YAMLchecksum);
+	
+	if(prevchecksum != YAMLchecksum)
+		irsdkServer::instance()->regSessionInfo(YAMLstring);
+
+	FILE *fo = fopen("c:\\temp\\ExampleInternalsYAML.txt", "w");
+	if(fo != NULL)
+		fprintf(fo, "%s", YAMLstring);
+	fclose(fo);
 
 	/*
   // Note: function is called twice per second now (instead of once per second in previous versions)

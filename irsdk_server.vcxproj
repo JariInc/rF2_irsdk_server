@@ -96,7 +96,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="..\irsdk_defines.h" />
-    <ClInclude Include="api_variables.h" />
     <ClInclude Include="djb2.h" />
     <ClInclude Include="InternalsPlugin.hpp" />
     <ClInclude Include="irsdk_defines.h" />
