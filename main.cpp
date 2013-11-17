@@ -33,6 +33,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #pragma warning(disable: 4996) 
 
 #include <windows.h>
+#include <gdiplus.h>
+#include <D3D9.h>
+#include <D3dx9tex.h>
+
 #include <stdio.h>
 #include <conio.h>
 #include <signal.h>
@@ -40,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <assert.h>
 #include <math.h>
 #include <stdlib.h>
+
 
 #include "irsdk_defines.h"
 #include "yaml.h"
@@ -54,7 +59,7 @@ const char * __cdecl GetPluginName()                   { return( "irsdk_server" 
 extern "C" __declspec( dllexport )
 PluginObjectType __cdecl GetPluginType()               { return( PO_INTERNALS ); }
 extern "C" __declspec( dllexport )
-int __cdecl GetPluginVersion()                         { return( 3 ); } // InternalsPluginV03 functionality
+int __cdecl GetPluginVersion()                         { return( 5 ); } // InternalsPluginV03 functionality
 extern "C" __declspec( dllexport )
 PluginObject * __cdecl CreatePluginObject()            { return( (PluginObject *) new rf2plugin ); }
 extern "C" __declspec( dllexport )
@@ -69,13 +74,18 @@ int rf2plugin::YAMLstring_len = 0;
 char rf2plugin::YAMLstring[irsdkServer::sessionStrLen] = "";
 unsigned int rf2plugin::YAMLchecksum = 0;
 
+using namespace Gdiplus;
+
 void rf2plugin::Startup( long version )
 {
+   //GdiplusStartupInput gdiplusStartupInput;
+   //GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
 }
 
 
 void rf2plugin::Shutdown()
 {
+	//GdiplusShutdown(gdiplusToken);
 }
 
 
@@ -84,30 +94,56 @@ void rf2plugin::StartSession()
 	// Generate random session id
 	srand(time(NULL));
 	g_sessionUniqueID = rand();
+
+	g_sessionTime =0;
+	m_EngineMaxRPM =-1;
 }
 
 
 void rf2plugin::EndSession()
 {
+	g_sessionTime =0;
+	m_EngineMaxRPM =-1;
 }
 
 
 void rf2plugin::EnterRealtime()
 {
+	// use these to turn disk based logging on and off
+	if(!irsdkServer::instance()->isDiskLoggingEnabled()) // disk logging is turned on
+		irsdkServer::instance()->toggleDiskLogging(); // turn logging on or off
+	// --- logging to disk enabled, so the next call to pullSampleVars opens a new file
+
+	// needed here, because this value can change in garage for some vehicles
+	m_EngineMaxRPM =-1;
 }
 
 
 void rf2plugin::ExitRealtime()
 {
+	if(irsdkServer::instance()->isDiskLoggingEnabled()) // disk logging is turned on
+		irsdkServer::instance()->toggleDiskLogging(); // turn logging on or off
+
+	// logging to disk is diabled; call pollSampleVars once again to finalize and close the file
+	irsdkServer::instance()->pollSampleVars();
+
 }
 
 void rf2plugin::UpdateTelemetry( const TelemInfoV01 &info )
 {
+	g_vehicleName =&info.mVehicleName[0];
+	g_trackName =&info.mTrackName[0];
+
 	if(info.mElapsedTime > g_sessionTime) {
 		// before going into your main data output loop, you must mark the headers as final
 		// it is possible for finalizeHeader() to fail, so try every tick, just in case
 		if(!irsdkServer::instance()->isHeaderFinalized())
 			irsdkServer::instance()->finalizeHeader();
+
+		// reset the data for this pass, if something is not updated
+		// we will output zero for that tick ... and clear the garbage out of the vars if this is the first call
+		if(irsdkServer::instance()->isInitialized())
+			irsdkServer::instance()->resetSampleVars();
 
 		if(irsdkServer::instance()->isHeaderFinalized())
 		{
@@ -120,12 +156,76 @@ void rf2plugin::UpdateTelemetry( const TelemInfoV01 &info )
 			g_lap = info.mLapNumber;
 			g_replayFrameNum = (int)floor(g_sessionTime * TICKS_PER_SEC);
 
-			/*
-			// use these to turn disk based logging on and off
-			if(!irsdkServer::instance()->isDiskLoggingEnabled()) // disk logging is turned on
-				irsdkServer::instance()->toggleDiskLogging(); // turn logging on or off
-			//irsdkServer::instance()->isDiskLoggingActive(); // disk logging is actively writting to disk
-			*/
+			if (m_EngineMaxRPM < 0) {
+				driverinfo.DriverCarRedLine  =m_EngineMaxRPM =info.mEngineMaxRPM;
+			}
+			for (int i =0; i < 3; i++)
+			{
+				// TODO: rotate coordinate system to ISO specs - see comments @ TelemInfoV01
+				m_telemetryInfo.mPos[i] =info.mPos[i];
+				m_telemetryInfo.mLocalAccel[i] =info.mLocalAccel[i];
+				m_telemetryInfo.mLocalVel[i] =info.mLocalVel[i];
+			}
+			// calculate speed from velocity vectors
+			float x =(float)info.mLocalVel.x, y =(float)info.mLocalVel.y, z =(float)info.mLocalVel.z;
+			m_telemetryInfo.mSpeed =(float)sqrt((x*x)+(y*y)+(z*z));
+			
+			// x and z needs to be inverted to follow ISO specs. (see comments @ TelemInfoV01)
+			// TODO: add vertical accel
+			m_telemetryInfo.mLatAccel =(float)info.mLocalAccel.x * -1.0f;
+			m_telemetryInfo.mLongAccel=(float)info.mLocalAccel.z * -1.0f;
+
+			// engine info
+			// TODO: add bitmask for engine values (irsdk_bitField)
+			m_telemetryInfo.mGear =(int)info.mGear;
+			m_telemetryInfo.mEngineRPM =(float)info.mEngineRPM;
+			m_telemetryInfo.mEngineWaterTemp =(float)info.mEngineWaterTemp;
+			m_telemetryInfo.mEngineOilTemp =(float)info.mEngineOilTemp;
+			m_telemetryInfo.mClutchRPM =(float)info.mClutchRPM;
+			m_telemetryInfo.mEngineTq =(float)info.mEngineTq;
+
+			// driver inputs
+			m_telemetryInfo.mUnfilteredBrake =(float)info.mUnfilteredBrake * 100.0f;
+			m_telemetryInfo.mUnfilteredClutch =(float)info.mUnfilteredClutch * 100.0f;
+			m_telemetryInfo.mUnfilteredSteering =(float)info.mUnfilteredSteering * 100.0f;
+			m_telemetryInfo.mUnfilteredThrottle =(float)info.mUnfilteredThrottle * 100.0f;
+
+			m_telemetryInfo.mFilteredBrake =(float)info.mFilteredBrake * 100.0f;
+			m_telemetryInfo.mFilteredClutch =(float)info.mFilteredClutch * 100.0f;
+			m_telemetryInfo.mFilteredSteering =(float)info.mFilteredSteering * 100.0f;
+			m_telemetryInfo.mFilteredThrottle =(float)info.mFilteredThrottle * 100.0f;
+
+			// global suspension info
+			m_telemetryInfo.mFrontRideHeight =(float)info.mFrontRideHeight;
+			m_telemetryInfo.mRearRideHeight =(float)info.mRearRideHeight;
+
+			m_telemetryInfo.mFuel =(float)info.mFuel;
+			m_telemetryInfo.mFuelCapacity =(float)info.mFuelCapacity;
+
+
+			// wheel info
+			for (int i = 0; i < 4; i++)
+			{
+				m_telemetryInfo.mWheel[i].mRideHeight =(float)info.mWheel[i].mRideHeight;
+				m_telemetryInfo.mWheel[i].mSuspensionDeflection =(float)info.mWheel[i].mSuspensionDeflection;
+				m_telemetryInfo.mWheel[i].mSuspForce =(float)info.mWheel[i].mSuspForce;
+				m_telemetryInfo.mWheel[i].mBrakeTemp =(float)info.mWheel[i].mBrakeTemp;
+				m_telemetryInfo.mWheel[i].mBrakePressure =(float)info.mWheel[i].mBrakePressure;
+				m_telemetryInfo.mWheel[i].mTemperature[0] =(float)info.mWheel[i].mTemperature[0];
+				m_telemetryInfo.mWheel[i].mTemperature[1] =(float)info.mWheel[i].mTemperature[1];
+				m_telemetryInfo.mWheel[i].mTemperature[2] =(float)info.mWheel[i].mTemperature[2];
+				m_telemetryInfo.mWheel[i].mPressure =(float)info.mWheel[i].mPressure;
+				m_telemetryInfo.mWheel[i].mCamber =(float)info.mWheel[i].mCamber;
+				m_telemetryInfo.mWheel[i].mLateralForce =(float)info.mWheel[i].mLateralForce;
+				m_telemetryInfo.mWheel[i].mLateralGroundVel =(float)info.mWheel[i].mLateralGroundVel;
+				m_telemetryInfo.mWheel[i].mLateralPatchVel =(float)info.mWheel[i].mLateralPatchVel;
+				m_telemetryInfo.mWheel[i].mLongitudinalForce =(float)info.mWheel[i].mLongitudinalForce;
+				m_telemetryInfo.mWheel[i].mLongitudinalGroundVel =(float)info.mWheel[i].mLongitudinalGroundVel;
+				m_telemetryInfo.mWheel[i].mLongitudinalPatchVel =(float)info.mWheel[i].mLongitudinalPatchVel;
+				m_telemetryInfo.mWheel[i].mRotation =(float)info.mWheel[i].mRotation;
+				m_telemetryInfo.mWheel[i].mTireLoad =(float)info.mWheel[i].mTireLoad;
+				m_telemetryInfo.mWheel[i].mToe =(float)info.mWheel[i].mToe;
+			}
 		}
 	}
 
@@ -229,6 +329,8 @@ void rf2plugin::UpdateGraphics( const GraphicsInfoV02 &info )
 {
 	g_camcaridx = info.mID + 1; 
 	g_camgroupnumber = info.mCameraType;
+
+
 	/*
   // Use the incoming data, for now I'll just write some of it to a file to a) make sure it
   // is working, and b) explain the coordinate system a little bit (see header for more info)
@@ -352,11 +454,16 @@ void rf2plugin::UpdateScoring( const ScoringInfoV01 &info )
 	VehicleScoringInfoV01 &leader = info.mVehicle[1];
 	g_sessionLapsRemain = info.mMaxLaps - leader.mTotalLaps;
 
+	// ---
+	m_telemetryInfo.mLapDist =(float)info.mVehicle[m_telemetryInfo.mID].mLapDist;
+	m_telemetryInfo.mLapDistPct =(float)(m_telemetryInfo.mLapDist/info.mLapDist) * 100.0f;
+	// ---
+
 	for( long i = 0; i < info.mNumVehicles; ++i )
     {
 		VehicleScoringInfoV01 &vinfo = info.mVehicle[i];
 		int caridx = vinfo.mID+1;
-		g_carIdxLapDistPct[caridx] = vinfo.mLapDist/info.mLapDist;
+		g_carIdxLapDistPct[caridx] = (vinfo.mLapDist/info.mLapDist) * 100.0f;
 		g_carIdxLap[caridx] = vinfo.mTotalLaps;
 		if(vinfo.mPitState == 3)
 			g_carIdxTrackSurface[caridx] = irsdk_TrkLoc::irsdk_InPitStall;
@@ -376,7 +483,7 @@ void rf2plugin::UpdateScoring( const ScoringInfoV01 &info )
 	if(prevchecksum != YAMLchecksum)
 		irsdkServer::instance()->regSessionInfo(YAMLstring);
 
-	FILE *fo = fopen("c:\\temp\\ExampleInternalsYAML.txt", "w");
+	FILE *fo = fopen("ExampleInternalsYAML.txt", "w");
 	if(fo != NULL)
 		fprintf(fo, "%s", YAMLstring);
 	fclose(fo);
@@ -447,6 +554,40 @@ void rf2plugin::UpdateScoring( const ScoringInfoV01 &info )
   */
 }
 
+bool rf2plugin::WantsToViewVehicle(CameraControlInfoV01 &camControl)
+{
+	return false;
+}
+
+void rf2plugin::RenderScreenAfterOverlays(const ScreenInfoV01 &info)
+{
+	// TODO: add logo to screen to indicate logging to disk is active or not
+
+	//Bitmap* bmp =new Bitmap(256,256, PixelFormat32bppARGB);
+	//if (bmp !=NULL) {
+	//	Graphics* gfx =Graphics::FromImage(bmp);
+	//	SolidBrush br(Color::Beige);
+
+	//	if (gfx !=NULL) {
+	//		gfx->FillRectangle(&br, 20,20,bmp->GetWidth(),bmp->GetHeight());
+	//		delete gfx;
+	//	}
+	//	
+	//	LPDIRECT3DTEXTURE9 tex =NULL;
+	//	HRESULT hr =D3DXCreateTexture((LPDIRECT3DDEVICE9)info.mDevice, bmp->GetWidth(), bmp->GetHeight(), 1, D3DUSAGE_DYNAMIC, D3DFMT_A8R8G8B8, D3DPOOL_SCRATCH, &tex);
+	//	if (D3D_OK ==hr) {
+	//		D3DLOCKED_RECT lr ={0};
+	//		hr =tex->LockRect(0, &lr, NULL, 0);
+	//		if (D3D_OK ==hr) {
+	//			tex->UnlockRect(0);
+	//			tex->Release();
+	//			tex =NULL;
+	//		}
+	//	}
+
+	//	delete bmp;
+	//}
+}
 
 bool rf2plugin::RequestCommentary( CommentaryRequestInfoV01 &info )
 {

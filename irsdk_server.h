@@ -30,7 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "irsdk_defines.h"
 
-static const int TICKS_PER_SEC = 50;
+static const int TICKS_PER_SEC = 100;
 
 static const int IRSDK_MAX_VARS = 4096;
 
