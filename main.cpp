@@ -74,6 +74,11 @@ int rf2plugin::YAMLstring_len = 0;
 char rf2plugin::YAMLstring[irsdkServer::sessionStrLen] = "";
 unsigned int rf2plugin::YAMLchecksum = 0;
 
+// used to create the filename in irsdk_diskserver
+const char* g_vehicleName;
+const char* g_trackName;
+
+
 using namespace Gdiplus;
 
 void rf2plugin::Startup( long version )
@@ -170,9 +175,8 @@ void rf2plugin::UpdateTelemetry( const TelemInfoV01 &info )
 			float x =(float)info.mLocalVel.x, y =(float)info.mLocalVel.y, z =(float)info.mLocalVel.z;
 			m_telemetryInfo.mSpeed =(float)sqrt((x*x)+(y*y)+(z*z));
 			
-			// x and z needs to be inverted to follow ISO specs. (see comments @ TelemInfoV01)
 			// TODO: add vertical accel
-			m_telemetryInfo.mLatAccel =(float)info.mLocalAccel.x * -1.0f;
+			m_telemetryInfo.mLatAccel =(float)info.mLocalAccel.x; // * -1.0f;
 			m_telemetryInfo.mLongAccel=(float)info.mLocalAccel.z * -1.0f;
 
 			// engine info
@@ -185,15 +189,15 @@ void rf2plugin::UpdateTelemetry( const TelemInfoV01 &info )
 			m_telemetryInfo.mEngineTq =(float)info.mEngineTq;
 
 			// driver inputs
-			m_telemetryInfo.mUnfilteredBrake =(float)info.mUnfilteredBrake * 100.0f;
-			m_telemetryInfo.mUnfilteredClutch =(float)info.mUnfilteredClutch * 100.0f;
-			m_telemetryInfo.mUnfilteredSteering =(float)info.mUnfilteredSteering * 100.0f;
-			m_telemetryInfo.mUnfilteredThrottle =(float)info.mUnfilteredThrottle * 100.0f;
+			m_telemetryInfo.mUnfilteredBrake =(float)info.mUnfilteredBrake;
+			m_telemetryInfo.mUnfilteredClutch =(float)info.mUnfilteredClutch;
+			m_telemetryInfo.mUnfilteredSteering =(float)info.mUnfilteredSteering;
+			m_telemetryInfo.mUnfilteredThrottle =(float)info.mUnfilteredThrottle;
 
-			m_telemetryInfo.mFilteredBrake =(float)info.mFilteredBrake * 100.0f;
-			m_telemetryInfo.mFilteredClutch =(float)info.mFilteredClutch * 100.0f;
-			m_telemetryInfo.mFilteredSteering =(float)info.mFilteredSteering * 100.0f;
-			m_telemetryInfo.mFilteredThrottle =(float)info.mFilteredThrottle * 100.0f;
+			m_telemetryInfo.mFilteredBrake =(float)info.mFilteredBrake;
+			m_telemetryInfo.mFilteredClutch =(float)info.mFilteredClutch;
+			m_telemetryInfo.mFilteredSteering =(float)info.mFilteredSteering;
+			m_telemetryInfo.mFilteredThrottle =(float)info.mFilteredThrottle;
 
 			// global suspension info
 			m_telemetryInfo.mFrontRideHeight =(float)info.mFrontRideHeight;
@@ -456,7 +460,7 @@ void rf2plugin::UpdateScoring( const ScoringInfoV01 &info )
 
 	// ---
 	m_telemetryInfo.mLapDist =(float)info.mVehicle[m_telemetryInfo.mID].mLapDist;
-	m_telemetryInfo.mLapDistPct =(float)(m_telemetryInfo.mLapDist/info.mLapDist) * 100.0f;
+	m_telemetryInfo.mLapDistPct =(float)(m_telemetryInfo.mLapDist/info.mLapDist);
 	// ---
 
 	for( long i = 0; i < info.mNumVehicles; ++i )

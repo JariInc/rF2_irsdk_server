@@ -153,10 +153,6 @@ struct TelemInfoData
   TelemWheelInfoData mWheel[4];       // wheel info (front left, front right, rear left, rear right)
 };
 
-// used to create the filename in irsdk_diskserver
-static const char* g_vehicleName;
-static const char* g_trackName;
-
 
 // This is used for the app to use the plugin for its intended purpose
 class rf2plugin : public InternalsPluginV05
