@@ -69,7 +69,7 @@ struct TelemInfoData
   long mID;                      // slot ID (note that it can be re-used in multiplayer after someone leaves)
 								 // --- currently we only export data for the player car, so this should be safe to use as an identifier
 
-  //double mDeltaTime;             // time since last update (seconds)
+  double mDeltaTime;             // time since last update (seconds)
   //double mElapsedTime;           // game session time
   //long mLapNumber;               // current lap number
   //double mLapStartET;            // time this lap was started
@@ -87,6 +87,7 @@ struct TelemInfoData
   float mSpeed;
   float mLatAccel;
   float mLongAccel;
+  float mVertAccel;
 
   // Orientation and derivatives
   float mLocalRot[3];          // rotation (radians/sec) in local vehicle coordinates
@@ -112,7 +113,7 @@ struct TelemInfoData
   float mFilteredClutch;        // ranges  0.0-1.0
 
   // Misc
-  //double mSteeringArmForce;      // force on steering arms
+  float mSteeringArmForce;      // force on steering arms
   //double mFront3rdDeflection;    // deflection at front 3rd spring
   //double mRear3rdDeflection;     // deflection at rear 3rd spring
 
@@ -132,6 +133,9 @@ struct TelemInfoData
   bool  mDetached;               // whether any parts (besides wheels) have been detached
   bool  mHeadlights;             // whether headlights are on
   unsigned char mSpeedLimiter;   // whether speed limiter is on
+
+  unsigned long m_engineWarnings;
+
   //unsigned char mDentSeverity[8];// dent severity at 8 locations around the car (0=none, 1=some, 2=more)
   //float mLastImpactET;          // time of last impact
   //float mLastImpactMagnitude;   // magnitude of last impact
@@ -140,13 +144,13 @@ struct TelemInfoData
   // Expanded
   double mEngineTq;              // current engine torque (including additive torque)
   //long mCurrentSector;           // the current sector (zero-based) with the pitlane stored in the sign bit (example: entering pits from third sector gives 0x80000002)
-  unsigned char mMaxGears;       // maximum forward gears
-  unsigned char mFrontTireCompoundIndex;   // index within brand
-  unsigned char mRearTireCompoundIndex;    // index within brand
+  //unsigned char mMaxGears;       // maximum forward gears
+  //unsigned char mFrontTireCompoundIndex;   // index within brand
+  //unsigned char mRearTireCompoundIndex;    // index within brand
   float mFuelCapacity;          // capacity in liters
-  unsigned char mFrontFlapActivated;       // whether front flap is activated
-  unsigned char mRearFlapActivated;        // whether rear flap is activated
-  unsigned char mRearFlapLegalStatus;      // 0=disallowed, 1=criteria detected but not allowed quite yet, 2=allowed
+  //unsigned char mFrontFlapActivated;       // whether front flap is activated
+  //unsigned char mRearFlapActivated;        // whether rear flap is activated
+  //unsigned char mRearFlapLegalStatus;      // 0=disallowed, 1=criteria detected but not allowed quite yet, 2=allowed
   unsigned char mIgnitionStarter;          // 0=off 1=ignition 2=ignition+starter
 
   // keeping this at the end of the structure to make it easier to replace in future versions
@@ -165,22 +169,23 @@ class rf2plugin : public InternalsPluginV05
 
 	  memset(&m_telemetryInfo, 0, sizeof(TelemInfoData));
 
-	  irsdkSessionTime = irsdkVar("SessionTime", &g_sessionTime, irsdk_double, 1, "Seconds since session start", "s", IRSDK_LOG_ALL);
-	  irsdkSessionNum = irsdkVar("SessionNum", &g_sessionNum, irsdk_int, 1, "Session number", "", IRSDK_LOG_LIVE);
-	  irsdkSessionState = irsdkVar("SessionState", &g_sessionState, irsdk_int, 1, "Session state", "irsdk_SessionState", IRSDK_LOG_ALL);
-	  irsdkSessionUniqueID = irsdkVar("SessionUniqueID", &g_sessionUniqueID, irsdk_int, 1, "Session ID", "", IRSDK_LOG_LIVE);
-	  irsdkSessionFlags = irsdkVar("SessionFlags", &g_sessionFlags, irsdk_bitField, 1, "Session flags", "irsdk_Flags", IRSDK_LOG_ALL);
-      irsdkSessionTimeRemain = irsdkVar("SessionTimeRemain", &g_sessionTimeRemain, irsdk_double, 1, "Seconds left till session ends", "s", IRSDK_LOG_LIVE);
-	  irsdkSessionLapsRemain = irsdkVar("SessionLapsRemain", &g_sessionLapsRemain, irsdk_int, 1, "Laps left till session ends", "", IRSDK_LOG_LIVE);
-	  irsdkLap = irsdkVar("Lap", &g_lap, irsdk_int, 1, "Lap count", "", IRSDK_LOG_ALL);
-	  irsdkCamCarIdx = irsdkVar("CamCarIdx", &g_camcaridx, irsdk_int, 1, "Active camera's focus car index", "", IRSDK_LOG_LIVE);
-	  irsdkCamGroupNumber = irsdkVar("CamGroupNumber", &g_camgroupnumber, irsdk_int, 1, "Active camera group number", "", IRSDK_LOG_LIVE);
-	  irsdkReplayFrameNum = irsdkVar("ReplayFrameNum", &g_replayFrameNum, irsdk_int, 1, "Integer replay frame number (60 per second)", "", IRSDK_LOG_LIVE);
-	  irsdkReplaySessionTime = irsdkVar("ReplaySessionTime", &g_replaySessionTime, irsdk_double, 1, "Seconds since replay session start", "s", IRSDK_LOG_LIVE);
-	  irsdkCarIdxLapDistPct = irsdkVar("CarIdxLapDistPct", &g_carIdxLapDistPct, irsdk_float, 64, "Percentage distance around lap by car index", "%", IRSDK_LOG_LIVE);
-	  irsdkCarIdxLap = irsdkVar("CarIdxLap", &g_carIdxLap, irsdk_int, 64, "Lap count by car index", "", IRSDK_LOG_LIVE);
-	  irsdkCarIdxTrackSurface = irsdkVar("CarIdxTrackSurface", &g_carIdxLap, irsdk_int, 64, "Track surface type by car index", "", IRSDK_LOG_LIVE);
+	  irsdkVar("SessionTime", &g_sessionTime, irsdk_double, 1, "Seconds since session start", "s", IRSDK_LOG_ALL);
+	  irsdkVar("SessionNum", &g_sessionNum, irsdk_int, 1, "Session number", "", IRSDK_LOG_ALL);
+	  irsdkVar("SessionState", &g_sessionState, irsdk_int, 1, "Session state", "irsdk_SessionState", IRSDK_LOG_ALL);
+	  irsdkVar("SessionUniqueID", &g_sessionUniqueID, irsdk_int, 1, "Session ID", "", IRSDK_LOG_ALL);
+	  irsdkVar("SessionFlags", &g_sessionFlags, irsdk_bitField, 1, "Session flags", "irsdk_Flags", IRSDK_LOG_LIVE);
+      irsdkVar("SessionTimeRemain", &g_sessionTimeRemain, irsdk_double, 1, "Seconds left till session ends", "s", IRSDK_LOG_ALL);
+	  irsdkVar("SessionLapsRemain", &g_sessionLapsRemain, irsdk_int, 1, "Laps left till session ends", "", IRSDK_LOG_ALL);
+	  irsdkVar("Lap", &g_lap, irsdk_int, 1, "Lap count", "", IRSDK_LOG_ALL);
+	  irsdkVar("CamCarIdx", &g_camcaridx, irsdk_int, 1, "Active camera's focus car index", "", IRSDK_LOG_LIVE);
+	  irsdkVar("CamGroupNumber", &g_camgroupnumber, irsdk_int, 1, "Active camera group number", "", IRSDK_LOG_LIVE);
+	  irsdkVar("ReplayFrameNum", &g_replayFrameNum, irsdk_int, 1, "Integer replay frame number (60 per second)", "", IRSDK_LOG_LIVE);
+	  irsdkVar("ReplaySessionTime", &g_replaySessionTime, irsdk_double, 1, "Seconds since replay session start", "s", IRSDK_LOG_LIVE);
+	  irsdkVar("CarIdxLapDistPct", &g_carIdxLapDistPct, irsdk_float, 64, "Percentage distance around lap by car index", "%", IRSDK_LOG_LIVE);
+	  irsdkVar("CarIdxLap", &g_carIdxLap, irsdk_int, 64, "Lap count by car index", "", IRSDK_LOG_LIVE);
+	  irsdkVar("CarIdxTrackSurface", &g_carIdxLap, irsdk_int, 64, "Track surface type by car index", "", IRSDK_LOG_LIVE);
 
+	  irsdkVar("IsInGarage", &g_isInGarage, irsdk_bool, 1, "is car in garage", "", IRSDK_LOG_LIVE);
 
 	  irsdkVar("LapDist_m", &m_telemetryInfo.mLapDist, irsdk_float, 1, "Meters traveled from S/F this lap", "m", IRSDK_LOG_ALL);
 	  irsdkVar("LapDistPct", &m_telemetryInfo.mLapDistPct, irsdk_float, 1, "Percentage distance around lap", "%", IRSDK_LOG_ALL);
@@ -194,10 +199,11 @@ class rf2plugin : public InternalsPluginV05
 	  irsdkVar("VelocityY", &m_telemetryInfo.mLocalVel[1], irsdk_float, 1, "Y velocity", "m/s", IRSDK_LOG_ALL);
 	  irsdkVar("VelocityZ", &m_telemetryInfo.mLocalVel[2], irsdk_float, 1, "Z velocity", "m/s", IRSDK_LOG_ALL);
 
-	  irsdkVar("PositionX", &m_telemetryInfo.mPos[0], irsdk_float, 1, "X Position in world", "m", IRSDK_LOG_DISK);
-	  irsdkVar("PositionY", &m_telemetryInfo.mPos[1], irsdk_float, 1, "Y Position in world", "m", IRSDK_LOG_DISK);
-	  irsdkVar("PositionZ", &m_telemetryInfo.mPos[2], irsdk_float, 1, "Z Position in world", "m", IRSDK_LOG_DISK);
+	  irsdkVar("PositionX", &m_telemetryInfo.mPos[0], irsdk_float, 1, "X Position in world", "m", IRSDK_LOG_ALL);
+	  irsdkVar("PositionY", &m_telemetryInfo.mPos[1], irsdk_float, 1, "Y Position in world", "m", IRSDK_LOG_ALL);
+	  irsdkVar("PositionZ", &m_telemetryInfo.mPos[2], irsdk_float, 1, "Z Position in world", "m", IRSDK_LOG_ALL);
 
+	  irsdkVar("EngineWarnings", &m_telemetryInfo.m_engineWarnings, irsdk_bitField, 1, "Bitfield for warning lights", "", IRSDK_LOG_ALL);
 	  irsdkVar("Gear", &m_telemetryInfo.mGear, irsdk_int, 1, "Gear", "", IRSDK_LOG_ALL, 1, 0);
 	  irsdkVar("RPM", &m_telemetryInfo.mEngineRPM, irsdk_float, 1, "Engine RPM", "revs/min", IRSDK_LOG_ALL);
       irsdkVar("WaterTemp", &m_telemetryInfo.mEngineWaterTemp, irsdk_float, 1, "Engine coolant temp", "C", IRSDK_LOG_ALL);
@@ -266,6 +272,71 @@ class rf2plugin : public InternalsPluginV05
 	  irsdkVar("LRpressure", &m_telemetryInfo.mWheel[LR].mPressure, irsdk_float, 1, "LR tire pressure", "kPa", IRSDK_LOG_DISK);
 	  irsdkVar("RRpressure", &m_telemetryInfo.mWheel[RR].mPressure, irsdk_float, 1, "RR tire pressure", "kPa", IRSDK_LOG_DISK);
 
+	  irsdkVar("LFcamber", &m_telemetryInfo.mWheel[LF].mCamber, irsdk_float, 1, "LF tire camber", "rad", IRSDK_LOG_DISK);
+	  irsdkVar("RFcamber", &m_telemetryInfo.mWheel[RF].mCamber, irsdk_float, 1, "RF tire camber", "rad", IRSDK_LOG_DISK);
+	  irsdkVar("LRcamber", &m_telemetryInfo.mWheel[LR].mCamber, irsdk_float, 1, "LR tire camber", "rad", IRSDK_LOG_DISK);
+	  irsdkVar("RRcamber", &m_telemetryInfo.mWheel[RR].mCamber, irsdk_float, 1, "RR tire camber", "rad", IRSDK_LOG_DISK);
+
+	  irsdkVar("LFlatF", &m_telemetryInfo.mWheel[LF].mLateralForce, irsdk_float, 1, "LF wheel lateral force", "N", IRSDK_LOG_DISK);
+	  irsdkVar("RFlatF", &m_telemetryInfo.mWheel[RF].mLateralForce, irsdk_float, 1, "RF wheel lateral force", "N", IRSDK_LOG_DISK);
+	  irsdkVar("LRlatF", &m_telemetryInfo.mWheel[LR].mLateralForce, irsdk_float, 1, "LR wheel lateral force", "N", IRSDK_LOG_DISK);
+	  irsdkVar("RRlatF", &m_telemetryInfo.mWheel[RR].mLateralForce, irsdk_float, 1, "RR wheel lateral force", "N", IRSDK_LOG_DISK);
+
+	  irsdkVar("LFlatGroundVel", &m_telemetryInfo.mWheel[LF].mLateralGroundVel, irsdk_float, 1, "LF lateral velocity at contact patch", "m/s", IRSDK_LOG_DISK);
+	  irsdkVar("RFlatGroundVel", &m_telemetryInfo.mWheel[RF].mLateralGroundVel, irsdk_float, 1, "RF lateral velocity at contact patch", "m/s", IRSDK_LOG_DISK);
+	  irsdkVar("LRlatGroundVel", &m_telemetryInfo.mWheel[LR].mLateralGroundVel, irsdk_float, 1, "LR lateral velocity at contact patch", "m/s", IRSDK_LOG_DISK);
+	  irsdkVar("RRlatGroundVel", &m_telemetryInfo.mWheel[RR].mLateralGroundVel, irsdk_float, 1, "RR lateral velocity at contact patch", "m/s", IRSDK_LOG_DISK);
+
+	  irsdkVar("LFlatPatchVel", &m_telemetryInfo.mWheel[LF].mLateralPatchVel, irsdk_float, 1, "LF lateral velocity at contact patch", "m/s", IRSDK_LOG_DISK);
+	  irsdkVar("RFlatPatchVel", &m_telemetryInfo.mWheel[RF].mLateralPatchVel, irsdk_float, 1, "RF lateral velocity at contact patch", "m/s", IRSDK_LOG_DISK);
+	  irsdkVar("LRlatPatchVel", &m_telemetryInfo.mWheel[LR].mLateralPatchVel, irsdk_float, 1, "LR lateral velocity at contact patch", "m/s", IRSDK_LOG_DISK);
+	  irsdkVar("RRlatPatchVel", &m_telemetryInfo.mWheel[RR].mLateralPatchVel, irsdk_float, 1, "RR lateral velocity at contact patch", "m/s", IRSDK_LOG_DISK);
+
+	  irsdkVar("LFlongF", &m_telemetryInfo.mWheel[LF].mLongitudinalForce, irsdk_float, 1, "LF wheel longitudinal force", "N", IRSDK_LOG_DISK);
+	  irsdkVar("RFlongF", &m_telemetryInfo.mWheel[RF].mLongitudinalForce, irsdk_float, 1, "RF wheel longitudinal force", "N", IRSDK_LOG_DISK);
+	  irsdkVar("LRlongF", &m_telemetryInfo.mWheel[LR].mLongitudinalForce, irsdk_float, 1, "LR wheel longitudinal force", "N", IRSDK_LOG_DISK);
+	  irsdkVar("RRlongF", &m_telemetryInfo.mWheel[RR].mLongitudinalForce, irsdk_float, 1, "RR wheel longitudinal force", "N", IRSDK_LOG_DISK);
+
+	  irsdkVar("LFlongGroundVel", &m_telemetryInfo.mWheel[LF].mLongitudinalGroundVel, irsdk_float, 1, "LF longitudinal velocity at contact patch", "m/s", IRSDK_LOG_DISK);
+	  irsdkVar("RFlongGroundVel", &m_telemetryInfo.mWheel[RF].mLongitudinalGroundVel, irsdk_float, 1, "RF longitudinal velocity at contact patch", "m/s", IRSDK_LOG_DISK);
+	  irsdkVar("LRlongGroundVel", &m_telemetryInfo.mWheel[LR].mLongitudinalGroundVel, irsdk_float, 1, "LR longitudinal velocity at contact patch", "m/s", IRSDK_LOG_DISK);
+	  irsdkVar("RRlongGroundVel", &m_telemetryInfo.mWheel[RR].mLongitudinalGroundVel, irsdk_float, 1, "RR longitudinal velocity at contact patch", "m/s", IRSDK_LOG_DISK);
+
+	  irsdkVar("LFlongPatchVel", &m_telemetryInfo.mWheel[LF].mLongitudinalPatchVel, irsdk_float, 1, "LF longitudinal velocity at contact patch", "m/s", IRSDK_LOG_DISK);
+	  irsdkVar("RFlongPatchVel", &m_telemetryInfo.mWheel[RF].mLongitudinalPatchVel, irsdk_float, 1, "RF longitudinal velocity at contact patch", "m/s", IRSDK_LOG_DISK);
+	  irsdkVar("LRlongPatchVel", &m_telemetryInfo.mWheel[LR].mLongitudinalPatchVel, irsdk_float, 1, "LR longitudinal velocity at contact patch", "m/s", IRSDK_LOG_DISK);
+	  irsdkVar("RRlongPatchVel", &m_telemetryInfo.mWheel[RR].mLongitudinalPatchVel, irsdk_float, 1, "RR longitudinal velocity at contact patch", "m/s", IRSDK_LOG_DISK);
+
+	  irsdkVar("LFtireLoad", &m_telemetryInfo.mWheel[LF].mTireLoad, irsdk_float, 1, "LF tire load", "N", IRSDK_LOG_DISK);
+	  irsdkVar("RFtireLoad", &m_telemetryInfo.mWheel[RF].mTireLoad, irsdk_float, 1, "RF tire load", "N", IRSDK_LOG_DISK);
+	  irsdkVar("LRtireLoad", &m_telemetryInfo.mWheel[LR].mTireLoad, irsdk_float, 1, "LR tire load", "N", IRSDK_LOG_DISK);
+	  irsdkVar("RRtireLoad", &m_telemetryInfo.mWheel[RR].mTireLoad, irsdk_float, 1, "RR tire load", "N", IRSDK_LOG_DISK);
+
+	  irsdkVar("LFvertDefl", &m_telemetryInfo.mWheel[LF].mVerticalTireDeflection, irsdk_float, 1, "LF tire deflection from its radius", "m", IRSDK_LOG_DISK);
+	  irsdkVar("RFvertDefl", &m_telemetryInfo.mWheel[RF].mVerticalTireDeflection, irsdk_float, 1, "RF tire deflection from its radius", "m", IRSDK_LOG_DISK);
+	  irsdkVar("LRvertDefl", &m_telemetryInfo.mWheel[LR].mVerticalTireDeflection, irsdk_float, 1, "LR tire deflection from its radius", "m", IRSDK_LOG_DISK);
+	  irsdkVar("RRvertDefl", &m_telemetryInfo.mWheel[RR].mVerticalTireDeflection, irsdk_float, 1, "RR tire deflection from its radius", "m", IRSDK_LOG_DISK);
+
+	  irsdkVar("LFwheelYLoc", &m_telemetryInfo.mWheel[LF].mWheelYLocation, irsdk_float, 1, "LF y location relative to vehicle", "m", IRSDK_LOG_DISK);
+	  irsdkVar("RFwheelYLoc", &m_telemetryInfo.mWheel[RF].mWheelYLocation, irsdk_float, 1, "RF y location relative to vehicle", "m", IRSDK_LOG_DISK);
+	  irsdkVar("LRwheelYLoc", &m_telemetryInfo.mWheel[LR].mWheelYLocation, irsdk_float, 1, "LR y location relative to vehicle", "m", IRSDK_LOG_DISK);
+	  irsdkVar("RRwheelYLoc", &m_telemetryInfo.mWheel[RR].mWheelYLocation, irsdk_float, 1, "RR y location relative to vehicle", "m", IRSDK_LOG_DISK);
+
+	  irsdkVar("LFtoe", &m_telemetryInfo.mWheel[LF].mWheelYLocation, irsdk_float, 1, "LF current toe angle", "rad", IRSDK_LOG_DISK);
+	  irsdkVar("RFtoe", &m_telemetryInfo.mWheel[RF].mWheelYLocation, irsdk_float, 1, "RF current toe angle", "rad", IRSDK_LOG_DISK);
+	  irsdkVar("LRtoe", &m_telemetryInfo.mWheel[LR].mWheelYLocation, irsdk_float, 1, "LR current toe angle", "rad", IRSDK_LOG_DISK);
+	  irsdkVar("RRtoe", &m_telemetryInfo.mWheel[RR].mWheelYLocation, irsdk_float, 1, "RR current toe angle", "rad", IRSDK_LOG_DISK);
+
+	  irsdkVar("LFgripFact", &m_telemetryInfo.mWheel[LF].mGripFract, irsdk_float, 1, "LF approximation of grip", "%", IRSDK_LOG_DISK);
+	  irsdkVar("RFgripFact", &m_telemetryInfo.mWheel[RF].mGripFract, irsdk_float, 1, "RF approximation of grip", "%", IRSDK_LOG_DISK);
+	  irsdkVar("LRgripFact", &m_telemetryInfo.mWheel[LR].mGripFract, irsdk_float, 1, "LR approximation of grip", "%", IRSDK_LOG_DISK);
+	  irsdkVar("RRgripFact", &m_telemetryInfo.mWheel[RR].mGripFract, irsdk_float, 1, "RR approximation of grip", "%", IRSDK_LOG_DISK);
+
+	  irsdkVar("LFwear", &m_telemetryInfo.mWheel[LF].mWear, irsdk_float, 1, "LF wear (0.0-1.0, fraction of maximum)", "%", IRSDK_LOG_DISK);
+	  irsdkVar("RFwear", &m_telemetryInfo.mWheel[RF].mWear, irsdk_float, 1, "RF wear (0.0-1.0, fraction of maximum)", "%", IRSDK_LOG_DISK);
+	  irsdkVar("LRwear", &m_telemetryInfo.mWheel[LR].mWear, irsdk_float, 1, "LR wear (0.0-1.0, fraction of maximum)", "%", IRSDK_LOG_DISK);
+	  irsdkVar("RRwear", &m_telemetryInfo.mWheel[RR].mWear, irsdk_float, 1, "RR wear (0.0-1.0, fraction of maximum)", "%", IRSDK_LOG_DISK);
+
   }
   ~rf2plugin() {}
 
@@ -293,7 +364,7 @@ class rf2plugin : public InternalsPluginV05
   void RenderScreenAfterOverlays( const ScreenInfoV01 &info ); // after resetting
 
   // GAME INPUT
-  bool HasHardwareInputs() { return( false ); } // CHANGE TO TRUE TO ENABLE HARDWARE EXAMPLE!
+  bool HasHardwareInputs() { return( true ); } // CHANGE TO TRUE TO ENABLE HARDWARE EXAMPLE!
   void UpdateHardware( const float fDT ) { } // update the hardware with the time between frames
   void EnableHardware() { mEnabled = false; }             // message from game to enable hardware
   void DisableHardware() { mEnabled = false; }           // message from game to disable hardware
@@ -343,54 +414,28 @@ class rf2plugin : public InternalsPluginV05
 
   //read once and write to SessionInfoStr - 
   double m_EngineMaxRPM;          // rev limit
-
+  bool g_isInGarage;
+  
   // session data
   double g_sessionTime;
-  irsdkVar irsdkSessionTime;
-
   int g_sessionNum;
-  irsdkVar irsdkSessionNum;
-
   int g_sessionState;
-  irsdkVar irsdkSessionState;
-
   int g_sessionUniqueID;
-  irsdkVar irsdkSessionUniqueID;
-
   int g_sessionFlags;
-  irsdkVar irsdkSessionFlags;
-
   double g_sessionTimeRemain;
-  irsdkVar irsdkSessionTimeRemain;
-
   int g_sessionLapsRemain;
-  irsdkVar irsdkSessionLapsRemain;
-
   int g_lap;
-  irsdkVar irsdkLap;
 
   // cameras and replay
   int g_camcaridx;
-  irsdkVar irsdkCamCarIdx;
-
   int g_camgroupnumber;
-  irsdkVar irsdkCamGroupNumber;
-
   int g_replayFrameNum;
-  irsdkVar irsdkReplayFrameNum;
-
   double g_replaySessionTime;
-  irsdkVar irsdkReplaySessionTime;
 
   // drivers
   float g_carIdxLapDistPct[64];
-  irsdkVar irsdkCarIdxLapDistPct;
-
   int g_carIdxLap[64];
-  irsdkVar irsdkCarIdxLap;
-
   int g_carIdxTrackSurface[64];
-  irsdkVar irsdkCarIdxTrackSurface;
 
 };
 

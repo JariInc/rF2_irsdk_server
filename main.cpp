@@ -83,14 +83,14 @@ using namespace Gdiplus;
 
 void rf2plugin::Startup( long version )
 {
-   //GdiplusStartupInput gdiplusStartupInput;
-   //GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+   GdiplusStartupInput gdiplusStartupInput;
+   GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
 }
 
 
 void rf2plugin::Shutdown()
 {
-	//GdiplusShutdown(gdiplusToken);
+	GdiplusShutdown(gdiplusToken);
 }
 
 
@@ -121,11 +121,18 @@ void rf2plugin::EnterRealtime()
 
 	// needed here, because this value can change in garage for some vehicles
 	m_EngineMaxRPM =-1;
+
+	g_isInGarage =false;
 }
 
 
 void rf2plugin::ExitRealtime()
 {
+	g_isInGarage =true;
+
+	// write latest values to file
+	irsdkServer::instance()->pollSampleVars();
+
 	if(irsdkServer::instance()->isDiskLoggingEnabled()) // disk logging is turned on
 		irsdkServer::instance()->toggleDiskLogging(); // turn logging on or off
 
@@ -133,6 +140,7 @@ void rf2plugin::ExitRealtime()
 	irsdkServer::instance()->pollSampleVars();
 
 }
+
 
 void rf2plugin::UpdateTelemetry( const TelemInfoV01 &info )
 {
@@ -158,35 +166,63 @@ void rf2plugin::UpdateTelemetry( const TelemInfoV01 &info )
 			// update our data...
 			g_sessionTime = info.mElapsedTime;
 			g_replaySessionTime = info.mElapsedTime;
-			g_lap = info.mLapNumber;
 			g_replayFrameNum = (int)floor(g_sessionTime * TICKS_PER_SEC);
+
+			if (g_lap < info.mLapNumber) {
+				m_telemetryInfo.mLapDistPct =0.0f;
+			}
+			g_lap = info.mLapNumber;
+			m_telemetryInfo.mDeltaTime =info.mDeltaTime;
 
 			if (m_EngineMaxRPM < 0) {
 				driverinfo.DriverCarRedLine  =m_EngineMaxRPM =info.mEngineMaxRPM;
 			}
 			for (int i =0; i < 3; i++)
 			{
-				// TODO: rotate coordinate system to ISO specs - see comments @ TelemInfoV01
+				// TODO: need to rotate coordinate system?
 				m_telemetryInfo.mPos[i] =info.mPos[i];
 				m_telemetryInfo.mLocalAccel[i] =info.mLocalAccel[i];
 				m_telemetryInfo.mLocalVel[i] =info.mLocalVel[i];
 			}
-			// calculate speed from velocity vectors
+
 			float x =(float)info.mLocalVel.x, y =(float)info.mLocalVel.y, z =(float)info.mLocalVel.z;
 			m_telemetryInfo.mSpeed =(float)sqrt((x*x)+(y*y)+(z*z));
 			
-			// TODO: add vertical accel
+			// TODO: check if vert accel needs to be inverted
 			m_telemetryInfo.mLatAccel =(float)info.mLocalAccel.x; // * -1.0f;
-			m_telemetryInfo.mLongAccel=(float)info.mLocalAccel.z * -1.0f;
+			m_telemetryInfo.mLongAccel =(float)info.mLocalAccel.z * -1.0f;
+			m_telemetryInfo.mVertAccel =(float)info.mLocalAccel.y;
+			
+			if (info.mOverheating) {
+				m_telemetryInfo.m_engineWarnings |=irsdk_waterTempWarning;
+			}
+			else {
+				m_telemetryInfo.m_engineWarnings &= ~irsdk_waterTempWarning;
+			}
+
+			if (info.mEngineRPM >= (info.mEngineMaxRPM - 10.0f)) {
+				m_telemetryInfo.m_engineWarnings |=irsdk_revLimiterActive;
+			}
+			else {
+				m_telemetryInfo.m_engineWarnings &= ~irsdk_revLimiterActive;
+			}
+
+			if (info.mSpeedLimiter) {
+				m_telemetryInfo.m_engineWarnings |=irsdk_pitSpeedLimiter;
+			}
+			else {
+				m_telemetryInfo.m_engineWarnings &= ~irsdk_pitSpeedLimiter;
+			}
+			// TODO: check if engine stalled 
 
 			// engine info
-			// TODO: add bitmask for engine values (irsdk_bitField)
 			m_telemetryInfo.mGear =(int)info.mGear;
 			m_telemetryInfo.mEngineRPM =(float)info.mEngineRPM;
 			m_telemetryInfo.mEngineWaterTemp =(float)info.mEngineWaterTemp;
 			m_telemetryInfo.mEngineOilTemp =(float)info.mEngineOilTemp;
 			m_telemetryInfo.mClutchRPM =(float)info.mClutchRPM;
 			m_telemetryInfo.mEngineTq =(float)info.mEngineTq;
+			m_telemetryInfo.mIgnitionStarter =info.mIgnitionStarter;
 
 			// driver inputs
 			m_telemetryInfo.mUnfilteredBrake =(float)info.mUnfilteredBrake;
@@ -206,6 +242,7 @@ void rf2plugin::UpdateTelemetry( const TelemInfoV01 &info )
 			m_telemetryInfo.mFuel =(float)info.mFuel;
 			m_telemetryInfo.mFuelCapacity =(float)info.mFuelCapacity;
 
+			m_telemetryInfo.mSteeringArmForce =(float)info.mSteeringArmForce;
 
 			// wheel info
 			for (int i = 0; i < 4; i++)
@@ -398,6 +435,7 @@ bool rf2plugin::ForceFeedback( float &forceValue )
   // Note that incoming value is the game's computation, in case you're interested.
 
   // CHANGE COMMENTS TO ENABLE FORCE EXAMPLE
+
   return( false );
 
   // I think the bounds are -11500 to 11500 ...
@@ -467,7 +505,7 @@ void rf2plugin::UpdateScoring( const ScoringInfoV01 &info )
     {
 		VehicleScoringInfoV01 &vinfo = info.mVehicle[i];
 		int caridx = vinfo.mID+1;
-		g_carIdxLapDistPct[caridx] = (vinfo.mLapDist/info.mLapDist) * 100.0f;
+		g_carIdxLapDistPct[caridx] = vinfo.mLapDist/info.mLapDist;
 		g_carIdxLap[caridx] = vinfo.mTotalLaps;
 		if(vinfo.mPitState == 3)
 			g_carIdxTrackSurface[caridx] = irsdk_TrkLoc::irsdk_InPitStall;
@@ -567,6 +605,53 @@ void rf2plugin::RenderScreenAfterOverlays(const ScreenInfoV01 &info)
 {
 	// TODO: add logo to screen to indicate logging to disk is active or not
 
+	//LPDIRECT3DDEVICE9 dev =(LPDIRECT3DDEVICE9)info.mDevice;
+	//if (dev !=NULL) {
+	//	LPDIRECT3DSURFACE9 surf =NULL;
+	//	HRESULT hr =dev->GetRenderTarget(0, &surf);
+	//	if (SUCCEEDED(hr)) {
+	//		//HDC dc =NULL;
+	//		//hr =surf->GetDC(&dc);
+	//		D3DSURFACE_DESC desc;
+	//		D3DLOCKED_RECT lockRc ={0};
+	//		surf->GetDesc(&desc);
+	//		if (desc.Usage ==D3DUSAGE_RENDERTARGET)
+	//			int x =0xffff;
+
+	//		//hr =surf->LockRect(&lockRc, NULL, D3DLOCK_DONOTWAIT );
+	//		void* container =NULL;
+	//		LPDIRECT3DTEXTURE9 tex =NULL;
+
+	//		hr =surf->GetContainer(IID_IDirect3DTexture9, &container);
+	//		if (SUCCEEDED(hr)  && container) {
+
+	//			tex =(LPDIRECT3DTEXTURE9)container;
+	//			hr =tex->GetLevelDesc(0, &desc);
+	//			if (SUCCEEDED(hr)) {
+	//				hr =tex->LockRect(0, &lockRc, NULL, 0);
+	//				if (SUCCEEDED(hr)) {
+
+	//					tex->UnlockRect(0);
+	//				}
+	//			}
+	//			tex->Release();
+	//			tex =NULL;
+
+	//			//Graphics* gfx =Graphics::FromHDC(dc);
+	//			//if (gfx !=NULL) {
+	//			//	SolidBrush br(Color::Yellow);
+	//			//	gfx->FillRectangle(&br, 100,100,200,200);
+	//			//	delete gfx;
+	//			//	gfx =NULL;
+	//			//}
+	//			//surf->ReleaseDC(dc);
+	//			//surf->UnlockRect();
+	//		}
+	//		surf->Release();
+	//		surf =NULL;
+	//	}
+	//}
+
 	//Bitmap* bmp =new Bitmap(256,256, PixelFormat32bppARGB);
 	//if (bmp !=NULL) {
 	//	Graphics* gfx =Graphics::FromImage(bmp);
@@ -591,6 +676,7 @@ void rf2plugin::RenderScreenAfterOverlays(const ScreenInfoV01 &info)
 
 	//	delete bmp;
 	//}
+
 }
 
 bool rf2plugin::RequestCommentary( CommentaryRequestInfoV01 &info )
