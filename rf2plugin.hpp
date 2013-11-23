@@ -127,6 +127,7 @@ struct TelemInfoData
 
   // State/damage info
   float mFuel;                  // amount of fuel (liters)
+  float mFuelLevelPct;			// amount of fuel %
   float mEngineMaxRPM;          // rev limit
   unsigned char mScheduledStops; // number of scheduled pitstops
   bool  mOverheating;            // whether overheating icon is shown
@@ -186,6 +187,7 @@ class rf2plugin : public InternalsPluginV05
 	  irsdkVar("CarIdxTrackSurface", &g_carIdxLap, irsdk_int, 64, "Track surface type by car index", "", IRSDK_LOG_LIVE);
 
 	  irsdkVar("IsInGarage", &g_isInGarage, irsdk_bool, 1, "is car in garage", "", IRSDK_LOG_LIVE);
+	  irsdkVar("IsOnTrack", &g_isOnTrack, irsdk_bool, 1, "1=Car on track physics running", "", IRSDK_LOG_ALL);
 
 	  irsdkVar("LapDist_m", &m_telemetryInfo.mLapDist, irsdk_float, 1, "Meters traveled from S/F this lap", "m", IRSDK_LOG_ALL);
 	  irsdkVar("LapDistPct", &m_telemetryInfo.mLapDistPct, irsdk_float, 1, "Percentage distance around lap", "%", IRSDK_LOG_ALL);
@@ -223,6 +225,7 @@ class rf2plugin : public InternalsPluginV05
 
 	  irsdkVar("FuelLevel", &m_telemetryInfo.mFuel, irsdk_float, 1, "Liters of fuel remaining", "L", IRSDK_LOG_ALL);
 	  irsdkVar("FuelCapacity", &m_telemetryInfo.mFuelCapacity, irsdk_float, 1, "Fueltank capacity", "L", IRSDK_LOG_ALL);
+	  irsdkVar("FuelLevelPct", &m_telemetryInfo.mFuelLevelPct, irsdk_float, 1, "Percent fuel remaining", "%", IRSDK_LOG_ALL);
 
 	  irsdkVar("EngineTorque", &m_telemetryInfo.mEngineTq, irsdk_float, 1, "Engine torque (including additional torque)", "Nm", IRSDK_LOG_ALL);
 
@@ -337,10 +340,16 @@ class rf2plugin : public InternalsPluginV05
 	  irsdkVar("LRwear", &m_telemetryInfo.mWheel[LR].mWear, irsdk_float, 1, "LR wear (0.0-1.0, fraction of maximum)", "%", IRSDK_LOG_DISK);
 	  irsdkVar("RRwear", &m_telemetryInfo.mWheel[RR].mWear, irsdk_float, 1, "RR wear (0.0-1.0, fraction of maximum)", "%", IRSDK_LOG_DISK);
 
+
   }
   ~rf2plugin() {}
-
+	
      ULONG_PTR gdiplusToken;
+static LRESULT CALLBACK WndProcHook(int nCode, WPARAM wParam, LPARAM lParam);
+
+static HHOOK g_wndProcHook;
+static long g_newCam;
+static bool g_switchCam;
 
   // These are the functions derived from base class InternalsPlugin
   // that can be implemented.
@@ -415,7 +424,8 @@ class rf2plugin : public InternalsPluginV05
   //read once and write to SessionInfoStr - 
   double m_EngineMaxRPM;          // rev limit
   bool g_isInGarage;
-  
+  bool g_isOnTrack;
+
   // session data
   double g_sessionTime;
   int g_sessionNum;

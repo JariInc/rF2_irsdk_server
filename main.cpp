@@ -33,9 +33,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #pragma warning(disable: 4996) 
 
 #include <windows.h>
-#include <gdiplus.h>
-#include <D3D9.h>
-#include <D3dx9tex.h>
+//#include <gdiplus.h>
+//#include <D3D9.h>
+//#include <D3dx9tex.h>
 
 #include <stdio.h>
 #include <conio.h>
@@ -78,24 +78,64 @@ unsigned int rf2plugin::YAMLchecksum = 0;
 const char* g_vehicleName;
 const char* g_trackName;
 
+HHOOK rf2plugin::g_wndProcHook =NULL;
+long rf2plugin::g_newCam =0;
+bool rf2plugin::g_switchCam =false;
 
-using namespace Gdiplus;
+//using namespace Gdiplus;
+
+
+LRESULT CALLBACK rf2plugin::WndProcHook(int nCode, WPARAM wParam, LPARAM lParam)
+{
+	static unsigned int broadcastMsgId = RegisterWindowMessageA(IRSDK_BROADCASTMSGNAME);
+	CWPSTRUCT* cwp =(CWPSTRUCT*)lParam;
+
+	if (cwp !=NULL)
+	{
+		UINT message =cwp->message;
+		if(broadcastMsgId && message == broadcastMsgId) {
+
+			irsdk_BroadcastMsg msg =(irsdk_BroadcastMsg)LOWORD(cwp->wParam);
+			int var1 =HIWORD(cwp->wParam);
+			int var2 =LOWORD(cwp->lParam);
+			int var3 =HIWORD(cwp->wParam);
+			int var2DWord =(cwp->lParam & 0xFFFFFFFF);
+
+			switch(msg) {
+				
+				case irsdk_BroadcastCamSwitchPos:
+					g_newCam =(long)var1;
+					g_switchCam =true;
+					break;
+
+				default:
+					break;
+			}
+		}
+	}
+
+	return CallNextHookEx(g_wndProcHook, nCode, wParam, lParam);
+}
+
 
 void rf2plugin::Startup( long version )
 {
-   GdiplusStartupInput gdiplusStartupInput;
-   GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+   //GdiplusStartupInput gdiplusStartupInput;
+   //GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);  
 }
 
 
 void rf2plugin::Shutdown()
 {
-	GdiplusShutdown(gdiplusToken);
+	//GdiplusShutdown(gdiplusToken);
 }
 
 
 void rf2plugin::StartSession()
 {
+	HINSTANCE hInst =GetModuleHandle("irsdk_server.dll");
+	g_wndProcHook =SetWindowsHookEx(WH_CALLWNDPROC, &rf2plugin::WndProcHook, hInst, GetCurrentThreadId());
+
 	// Generate random session id
 	srand(time(NULL));
 	g_sessionUniqueID = rand();
@@ -107,6 +147,8 @@ void rf2plugin::StartSession()
 
 void rf2plugin::EndSession()
 {
+	UnhookWindowsHookEx(g_wndProcHook);
+
 	g_sessionTime =0;
 	m_EngineMaxRPM =-1;
 }
@@ -123,12 +165,14 @@ void rf2plugin::EnterRealtime()
 	m_EngineMaxRPM =-1;
 
 	g_isInGarage =false;
+	g_isOnTrack =true;
 }
 
 
 void rf2plugin::ExitRealtime()
 {
 	g_isInGarage =true;
+	g_isOnTrack =false;
 
 	// write latest values to file
 	irsdkServer::instance()->pollSampleVars();
@@ -241,6 +285,7 @@ void rf2plugin::UpdateTelemetry( const TelemInfoV01 &info )
 
 			m_telemetryInfo.mFuel =(float)info.mFuel;
 			m_telemetryInfo.mFuelCapacity =(float)info.mFuelCapacity;
+			m_telemetryInfo.mFuelLevelPct =(float)(info.mFuel/info.mFuelCapacity);
 
 			m_telemetryInfo.mSteeringArmForce =(float)info.mSteeringArmForce;
 
@@ -598,6 +643,14 @@ void rf2plugin::UpdateScoring( const ScoringInfoV01 &info )
 
 bool rf2plugin::WantsToViewVehicle(CameraControlInfoV01 &camControl)
 {
+	if (g_switchCam) {
+		camControl.mCameraType =g_newCam;
+		camControl.mID =0;
+
+		g_switchCam =false;
+		return true;
+	}
+
 	return false;
 }
 
