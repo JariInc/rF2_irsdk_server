@@ -30,6 +30,19 @@ enum WheelPosition {
 	RR
 };
 
+struct IniConfig
+{
+	char logfilePath[MAX_PATH];
+	bool activateOnStartup;
+	char activationKey;
+	unsigned char activationKeyModifier;
+
+	char dataRate;
+	bool logAeroData;
+	bool logExtendedWheelData;
+};
+
+
 struct TelemWheelInfoData
 {
   float mSuspensionDeflection;  // meters
@@ -52,10 +65,10 @@ struct TelemWheelInfoData
   float mPressure;              // kPa (tire pressure)
   float mTemperature[3];        // Kelvin (subtract 273.16 to get Celsius), left/center/right (not to be confused with inside/center/outside!)
   float mWear;                  // wear (0.0-1.0, fraction of maximum) ... this is not necessarily proportional with grip loss
-  char mTerrainName[16];         // the material prefixes from the TDF file
-  unsigned char mSurfaceType;    // 0=dry, 1=wet, 2=grass, 3=dirt, 4=gravel, 5=rumblestrip
-  bool mFlat;                    // whether tire is flat
-  bool mDetached;                // whether wheel is detached
+  //char mTerrainName[16];         // the material prefixes from the TDF file
+  //unsigned char mSurfaceType;    // 0=dry, 1=wet, 2=grass, 3=dirt, 4=gravel, 5=rumblestrip
+  //bool mFlat;                    // whether tire is flat
+  //bool mDetached;                // whether wheel is detached
 
   float mVerticalTireDeflection; // how much is tire deflected from its (speed-sensitive) radius
   float mWheelYLocation;        // wheel's y location relative to vehicle y location
@@ -82,7 +95,6 @@ struct TelemInfoData
   // Position and derivatives
   float mPos[3];               // world position in meters (XYZ)
   float mLocalVel[3];          // velocity (meters/sec) in local vehicle coordinates
-  float mLocalAccel[3];        // acceleration (meters/sec^2) in local vehicle coordinates
 
   float mSpeed;
   float mLatAccel;
@@ -90,8 +102,8 @@ struct TelemInfoData
   float mVertAccel;
 
   // Orientation and derivatives
-  float mLocalRot[3];          // rotation (radians/sec) in local vehicle coordinates
-  float mLocalRotAccel[3];     // rotational acceleration (radians/sec^2) in local vehicle coordinates
+  //float mLocalRot[3];          // rotation (radians/sec) in local vehicle coordinates
+  //float mLocalRotAccel[3];     // rotational acceleration (radians/sec^2) in local vehicle coordinates
 
   // Vehicle status
   int mGear;                    // -1=reverse, 0=neutral, 1+=forward gears
@@ -118,21 +130,21 @@ struct TelemInfoData
   //double mRear3rdDeflection;     // deflection at rear 3rd spring
 
   // Aerodynamics
-  float mFrontWingHeight;       // front wing height
+  //float mFrontWingHeight;       // front wing height
   float mFrontRideHeight;       // front ride height
   float mRearRideHeight;        // rear ride height
-  float mDrag;                  // drag
-  float mFrontDownforce;        // front downforce
-  float mRearDownforce;         // rear downforce
+  //float mDrag;                  // drag
+  //float mFrontDownforce;        // front downforce
+  //float mRearDownforce;         // rear downforce
 
   // State/damage info
   float mFuel;                  // amount of fuel (liters)
   float mFuelLevelPct;			// amount of fuel %
   float mEngineMaxRPM;          // rev limit
-  unsigned char mScheduledStops; // number of scheduled pitstops
+  //unsigned char mScheduledStops; // number of scheduled pitstops
   bool  mOverheating;            // whether overheating icon is shown
-  bool  mDetached;               // whether any parts (besides wheels) have been detached
-  bool  mHeadlights;             // whether headlights are on
+  //bool  mDetached;               // whether any parts (besides wheels) have been detached
+  //bool  mHeadlights;             // whether headlights are on
   unsigned char mSpeedLimiter;   // whether speed limiter is on
 
   unsigned long m_engineWarnings;
@@ -159,6 +171,17 @@ struct TelemInfoData
 };
 
 
+struct TimingInfo 
+{
+	float bestLapTime;
+	int lapBestLap;
+	float lastLapTime;
+	float curLapTime;
+
+	//...
+};
+
+
 // This is used for the app to use the plugin for its intended purpose
 class rf2plugin : public InternalsPluginV05
 {
@@ -169,6 +192,12 @@ class rf2plugin : public InternalsPluginV05
   rf2plugin() {
 
 	  memset(&m_telemetryInfo, 0, sizeof(TelemInfoData));
+	  memset(&m_timingInfo, 0, sizeof(TimingInfo));
+	  memset(&m_config, 0, sizeof(IniConfig));
+
+
+	  m_newCam =0;
+	  m_switchCam =false;
 
 	  irsdkVar("SessionTime", &g_sessionTime, irsdk_double, 1, "Seconds since session start", "s", IRSDK_LOG_ALL);
 	  irsdkVar("SessionNum", &g_sessionNum, irsdk_int, 1, "Session number", "", IRSDK_LOG_ALL);
@@ -186,53 +215,64 @@ class rf2plugin : public InternalsPluginV05
 	  irsdkVar("CarIdxLap", &g_carIdxLap, irsdk_int, 64, "Lap count by car index", "", IRSDK_LOG_LIVE);
 	  irsdkVar("CarIdxTrackSurface", &g_carIdxLap, irsdk_int, 64, "Track surface type by car index", "", IRSDK_LOG_LIVE);
 
+	  irsdkVar("LapBestLap", &m_timingInfo.lapBestLap, irsdk_int, 1, "Players best lap number", "s", IRSDK_LOG_ALL);
+	  irsdkVar("LapBestLapTime", &m_timingInfo.bestLapTime, irsdk_float, 1, "Players best lap time", "s", IRSDK_LOG_ALL);
+	  irsdkVar("LapLastLapTime", &m_timingInfo.lastLapTime, irsdk_float, 1, "Players last lap time", "s", IRSDK_LOG_ALL);
+	  irsdkVar("LapCurrentLapTime", &m_timingInfo.curLapTime, irsdk_int, 1, "Estimate of players current lap time", "s", IRSDK_LOG_ALL);
+
+	  irsdkVar("RawSteeringWheelPos", &m_telemetryInfo.mUnfilteredSteering, irsdk_float, 1, "Unfiltered steering wheel position", "%", IRSDK_LOG_DISK);
+	  irsdkVar("SteeringWheelPos", &m_telemetryInfo.mFilteredSteering, irsdk_float, 1, "Steering wheel position", "%", IRSDK_LOG_ALL);
+	  irsdkVar("RawThrottlePos", &m_telemetryInfo.mUnfilteredThrottle, irsdk_float, 1, "Unfiltered throttle pedal position", "%", IRSDK_LOG_DISK);
+	  irsdkVar("Throttle", &m_telemetryInfo.mFilteredThrottle, irsdk_float, 1, "0=off throttle to 1=full throttle", "%", IRSDK_LOG_ALL);
+	  irsdkVar("RawBrakePos", &m_telemetryInfo.mUnfilteredBrake, irsdk_float, 1, "Unfiltered brake pedal position", "%", IRSDK_LOG_DISK);
+	  irsdkVar("Brake", &m_telemetryInfo.mFilteredBrake, irsdk_float, 1, "0=brake released to 1=max pedal force", "%", IRSDK_LOG_ALL);
+	  irsdkVar("RawClutchPos", &m_telemetryInfo.mUnfilteredClutch, irsdk_float, 1, "Unfiltered clutch pedal position", "%", IRSDK_LOG_DISK);
+	  irsdkVar("Clutch", &m_telemetryInfo.mFilteredClutch, irsdk_float, 1, "0=disengaged to 1=fully engaged", "%", IRSDK_LOG_ALL);
+
+	  irsdkVar("Gear", &m_telemetryInfo.mGear, irsdk_int, 1, "Gear", "", IRSDK_LOG_ALL, 1, 0);
+	  irsdkVar("RPM", &m_telemetryInfo.mEngineRPM, irsdk_float, 1, "Engine RPM", "revs/min", IRSDK_LOG_ALL);
+	  irsdkVar("ClutchRPM", &m_telemetryInfo.mClutchRPM, irsdk_float, 1, "Clutch RPM", "", IRSDK_LOG_ALL);
+
+	  irsdkVar("LapDist", &m_telemetryInfo.mLapDist, irsdk_float, 1, "Meters traveled from S/F this lap", "m", IRSDK_LOG_ALL);
+	  irsdkVar("LapDistPct", &m_telemetryInfo.mLapDistPct, irsdk_float, 1, "Percentage distance around lap", "%", IRSDK_LOG_ALL);
+
 	  irsdkVar("IsInGarage", &g_isInGarage, irsdk_bool, 1, "is car in garage", "", IRSDK_LOG_LIVE);
 	  irsdkVar("IsOnTrack", &g_isOnTrack, irsdk_bool, 1, "1=Car on track physics running", "", IRSDK_LOG_ALL);
 
-	  irsdkVar("LapDist_m", &m_telemetryInfo.mLapDist, irsdk_float, 1, "Meters traveled from S/F this lap", "m", IRSDK_LOG_ALL);
-	  irsdkVar("LapDistPct", &m_telemetryInfo.mLapDistPct, irsdk_float, 1, "Percentage distance around lap", "%", IRSDK_LOG_ALL);
 
 	  // Telemetry Data
 	  irsdkVar("Speed", &m_telemetryInfo.mSpeed, irsdk_float, 1, "Car speed", "m/s", IRSDK_LOG_ALL);
-	  irsdkVar("LatAccel", &m_telemetryInfo.mLatAccel, irsdk_float, 1, "Lateral acceleration", "m/s^2", IRSDK_LOG_ALL);
 	  irsdkVar("LongAccel", &m_telemetryInfo.mLongAccel, irsdk_float, 1, "Longitudinal acceleration", "m/s^2", IRSDK_LOG_ALL);
+	  irsdkVar("LatAccel", &m_telemetryInfo.mLatAccel, irsdk_float, 1, "Lateral acceleration", "m/s^2", IRSDK_LOG_ALL);
+	  irsdkVar("VertAccel", &m_telemetryInfo.mVertAccel, irsdk_float, 1, "Vertical acceleration", "m/s^2", IRSDK_LOG_ALL);
 
 	  irsdkVar("VelocityX", &m_telemetryInfo.mLocalVel[0], irsdk_float, 1, "X velocity", "m/s", IRSDK_LOG_ALL);
 	  irsdkVar("VelocityY", &m_telemetryInfo.mLocalVel[1], irsdk_float, 1, "Y velocity", "m/s", IRSDK_LOG_ALL);
 	  irsdkVar("VelocityZ", &m_telemetryInfo.mLocalVel[2], irsdk_float, 1, "Z velocity", "m/s", IRSDK_LOG_ALL);
 
-	  irsdkVar("PositionX", &m_telemetryInfo.mPos[0], irsdk_float, 1, "X Position in world", "m", IRSDK_LOG_ALL);
-	  irsdkVar("PositionY", &m_telemetryInfo.mPos[1], irsdk_float, 1, "Y Position in world", "m", IRSDK_LOG_ALL);
-	  irsdkVar("PositionZ", &m_telemetryInfo.mPos[2], irsdk_float, 1, "Z Position in world", "m", IRSDK_LOG_ALL);
+	  irsdkVar("Lat", &m_telemetryInfo.mPos[0], irsdk_float, 1, "X Position in world", "m", IRSDK_LOG_DISK);
+	  irsdkVar("Lon", &m_telemetryInfo.mPos[2], irsdk_float, 1, "Z Position in world", "m", IRSDK_LOG_DISK);
+	  irsdkVar("Alt", &m_telemetryInfo.mPos[1], irsdk_float, 1, "Y Position in world", "m", IRSDK_LOG_DISK);
 
 	  irsdkVar("EngineWarnings", &m_telemetryInfo.m_engineWarnings, irsdk_bitField, 1, "Bitfield for warning lights", "", IRSDK_LOG_ALL);
-	  irsdkVar("Gear", &m_telemetryInfo.mGear, irsdk_int, 1, "Gear", "", IRSDK_LOG_ALL, 1, 0);
-	  irsdkVar("RPM", &m_telemetryInfo.mEngineRPM, irsdk_float, 1, "Engine RPM", "revs/min", IRSDK_LOG_ALL);
       irsdkVar("WaterTemp", &m_telemetryInfo.mEngineWaterTemp, irsdk_float, 1, "Engine coolant temp", "C", IRSDK_LOG_ALL);
 	  irsdkVar("OilTemp", &m_telemetryInfo.mEngineOilTemp, irsdk_float, 1, "Engine oil temperature", "C", IRSDK_LOG_ALL);
-	  irsdkVar("ClutchRPM", &m_telemetryInfo.mClutchRPM, irsdk_float, 1, "Clutch RPM", "", IRSDK_LOG_ALL);
-	  irsdkVar("RawBrakePos", &m_telemetryInfo.mUnfilteredBrake, irsdk_float, 1, "Unfiltered brake pedal position", "%", IRSDK_LOG_DISK);
-	  irsdkVar("RawClutchPos", &m_telemetryInfo.mUnfilteredClutch, irsdk_float, 1, "Unfiltered clutch pedal position", "%", IRSDK_LOG_DISK);
-	  irsdkVar("RawSteeringWheelPos", &m_telemetryInfo.mUnfilteredSteering, irsdk_float, 1, "Unfiltered steering wheel position", "%", IRSDK_LOG_DISK);
-	  irsdkVar("RawThrottlePos", &m_telemetryInfo.mUnfilteredThrottle, irsdk_float, 1, "Unfiltered throttle pedal position", "%", IRSDK_LOG_DISK);
-	  irsdkVar("Brake", &m_telemetryInfo.mFilteredBrake, irsdk_float, 1, "0=brake released to 1=max pedal force", "%", IRSDK_LOG_ALL);
-	  irsdkVar("Clutch", &m_telemetryInfo.mFilteredClutch, irsdk_float, 1, "0=disengaged to 1=fully engaged", "%", IRSDK_LOG_ALL);
-	  irsdkVar("SteeringWheelPos", &m_telemetryInfo.mFilteredSteering, irsdk_float, 1, "Steering wheel position", "%", IRSDK_LOG_ALL);
-	  irsdkVar("Throttle", &m_telemetryInfo.mFilteredThrottle, irsdk_float, 1, "0=off throttle to 1=full throttle", "%", IRSDK_LOG_ALL);
 
-	  irsdkVar("CFSRrideHeight", &m_telemetryInfo.mFrontRideHeight, irsdk_float, 1, "Center front splitter ride height", "m", IRSDK_LOG_ALL);
-	  irsdkVar("CRDRideHeight", &m_telemetryInfo.mRearRideHeight, irsdk_float, 1, "Center rear diffusor ride height", "m", IRSDK_LOG_ALL);
+	  irsdkVar("CFRrideHeight", &m_telemetryInfo.mFrontRideHeight, irsdk_float, 1, "Center front ride height", "m", IRSDK_LOG_DISK);
+	  irsdkVar("CRRideHeight", &m_telemetryInfo.mRearRideHeight, irsdk_float, 1, "Center rear ride height", "m", IRSDK_LOG_DISK);
 
 	  irsdkVar("FuelLevel", &m_telemetryInfo.mFuel, irsdk_float, 1, "Liters of fuel remaining", "L", IRSDK_LOG_ALL);
-	  irsdkVar("FuelCapacity", &m_telemetryInfo.mFuelCapacity, irsdk_float, 1, "Fueltank capacity", "L", IRSDK_LOG_ALL);
+	  irsdkVar("FuelCapacity", &m_telemetryInfo.mFuelCapacity, irsdk_float, 1, "Fueltank capacity", "L", IRSDK_LOG_DISK);
 	  irsdkVar("FuelLevelPct", &m_telemetryInfo.mFuelLevelPct, irsdk_float, 1, "Percent fuel remaining", "%", IRSDK_LOG_ALL);
 
 	  irsdkVar("EngineTorque", &m_telemetryInfo.mEngineTq, irsdk_float, 1, "Engine torque (including additional torque)", "Nm", IRSDK_LOG_ALL);
 
-	  irsdkVar("LFrideHeight", &m_telemetryInfo.mWheel[LF].mRideHeight, irsdk_float, 1, "LF ride height", "m", IRSDK_LOG_ALL);
-	  irsdkVar("RFrideHeight", &m_telemetryInfo.mWheel[RF].mRideHeight, irsdk_float, 1, "RF ride height", "m", IRSDK_LOG_ALL);
-	  irsdkVar("LRrideHeight", &m_telemetryInfo.mWheel[LR].mRideHeight, irsdk_float, 1, "LR ride height", "m", IRSDK_LOG_ALL);
-	  irsdkVar("RRrideHeight", &m_telemetryInfo.mWheel[RR].mRideHeight, irsdk_float, 1, "RR ride height", "m", IRSDK_LOG_ALL);
+	  irsdkVar("SteeringArmForce", &m_telemetryInfo.mSteeringArmForce, irsdk_float, 1, "Force on steering arms", "N", IRSDK_LOG_DISK);
+
+	  irsdkVar("LFrideHeight", &m_telemetryInfo.mWheel[LF].mRideHeight, irsdk_float, 1, "LF ride height", "m", IRSDK_LOG_DISK);
+	  irsdkVar("RFrideHeight", &m_telemetryInfo.mWheel[RF].mRideHeight, irsdk_float, 1, "RF ride height", "m", IRSDK_LOG_DISK);
+	  irsdkVar("LRrideHeight", &m_telemetryInfo.mWheel[LR].mRideHeight, irsdk_float, 1, "LR ride height", "m", IRSDK_LOG_DISK);
+	  irsdkVar("RRrideHeight", &m_telemetryInfo.mWheel[RR].mRideHeight, irsdk_float, 1, "RR ride height", "m", IRSDK_LOG_DISK);
 
 	  irsdkVar("LFshockDefl", &m_telemetryInfo.mWheel[LF].mSuspensionDeflection, irsdk_float, 1, "LF shock deflection", "m", IRSDK_LOG_DISK);
 	  irsdkVar("RFshockDefl", &m_telemetryInfo.mWheel[RF].mSuspensionDeflection, irsdk_float, 1, "RF shock deflection", "m", IRSDK_LOG_DISK);
@@ -340,16 +380,23 @@ class rf2plugin : public InternalsPluginV05
 	  irsdkVar("LRwear", &m_telemetryInfo.mWheel[LR].mWear, irsdk_float, 1, "LR wear (0.0-1.0, fraction of maximum)", "%", IRSDK_LOG_DISK);
 	  irsdkVar("RRwear", &m_telemetryInfo.mWheel[RR].mWear, irsdk_float, 1, "RR wear (0.0-1.0, fraction of maximum)", "%", IRSDK_LOG_DISK);
 
+	  irsdkVar("LFrotation", &m_telemetryInfo.mWheel[LF].mRotation, irsdk_float, 1, "LF wheel rotational speed", "rad/s", IRSDK_LOG_DISK);
+	  irsdkVar("RFrotation", &m_telemetryInfo.mWheel[RF].mRotation, irsdk_float, 1, "RF wheel rotational speed", "rad/s", IRSDK_LOG_DISK);
+	  irsdkVar("LRrotation", &m_telemetryInfo.mWheel[LR].mRotation, irsdk_float, 1, "LR wheel rotational speed", "rad/s", IRSDK_LOG_DISK);
+	  irsdkVar("RRrotation", &m_telemetryInfo.mWheel[RR].mRotation, irsdk_float, 1, "RR wheel rotational speed", "rad/s", IRSDK_LOG_DISK);
 
-  }
+	  irsdkVar("LFtoe", &m_telemetryInfo.mWheel[LF].mToe, irsdk_float, 1, "LF toe angle w.r.t. the vehicle", "rad", IRSDK_LOG_DISK);
+	  irsdkVar("RFtoe", &m_telemetryInfo.mWheel[RF].mToe, irsdk_float, 1, "RF toe angle w.r.t. the vehicle", "rad", IRSDK_LOG_DISK);
+	  irsdkVar("LRtoe", &m_telemetryInfo.mWheel[LR].mToe, irsdk_float, 1, "LR toe angle w.r.t. the vehicle", "rad", IRSDK_LOG_DISK);
+	  irsdkVar("RRtoe", &m_telemetryInfo.mWheel[RR].mToe, irsdk_float, 1, "RR toe angle w.r.t. the vehicle", "rad", IRSDK_LOG_DISK);
+
+ }
   ~rf2plugin() {}
 	
      ULONG_PTR gdiplusToken;
-static LRESULT CALLBACK WndProcHook(int nCode, WPARAM wParam, LPARAM lParam);
 
-static HHOOK g_wndProcHook;
-static long g_newCam;
-static bool g_switchCam;
+	 long m_newCam;
+	 bool m_switchCam;
 
   // These are the functions derived from base class InternalsPlugin
   // that can be implemented.
@@ -400,6 +447,10 @@ static bool g_switchCam;
   virtual void VideoWriteAudio( const short *pAudio, unsigned int uNumFrames ) {} // write some audio info
   virtual void VideoWriteImage( const unsigned char *pImage ) {} // write video image
 
+  void SetEnvironment( const EnvironmentInfoV01 &info );
+
+  void ReadAndParseConfigFile();
+
   void YAMLupdate(const ScoringInfoV01 &info);
   //void YAMLupdate(const TelemInfoV01 &info);
   void YAMLgenerate();
@@ -417,9 +468,23 @@ static bool g_switchCam;
   static DriverInfo driverinfo;
 
 
+  IniConfig m_config;
+
   // Real time telemetry variables
   TelemInfoData m_telemetryInfo;
 
+  // lap timing info
+  TimingInfo m_timingInfo;
+
+  // player car idx
+  int m_playerCarIdx;
+
+  // used only for comparison to find best lap number (maintain accuracy for double)
+  double m_bestLapComp;
+
+  // lap dist pct position of sectors
+  float m_sectorPos[3];
+  signed char m_curSector; // current sector
 
   //read once and write to SessionInfoStr - 
   double m_EngineMaxRPM;          // rev limit

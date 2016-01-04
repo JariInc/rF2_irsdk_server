@@ -2,34 +2,29 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="shared">
-      <UniqueIdentifier>{a58b8bda-ef4c-4de0-b91b-8ea0e46a7fba}</UniqueIdentifier>
+      <UniqueIdentifier>{605ae8d2-2980-421a-b9b8-43494777c330}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\irsdk_defines.h">
       <Filter>shared</Filter>
     </ClInclude>
+    <ClInclude Include="djb2.h" />
     <ClInclude Include="irsdk_diskserver.h" />
     <ClInclude Include="irsdk_memserver.h" />
     <ClInclude Include="irsdk_server.h" />
-    <ClInclude Include="irsdk_defines.h" />
-    <ClInclude Include="yaml_parser.h" />
-    <ClInclude Include="InternalsPlugin.hpp" />
-    <ClInclude Include="PluginObjects.hpp" />
-    <ClInclude Include="rf2plugin.hpp" />
-    <ClInclude Include="yaml.h" />
     <ClInclude Include="MurmurHash3.h" />
-    <ClInclude Include="djb2.h" />
+    <ClInclude Include="yaml.h" />
+    <ClInclude Include="yaml_parser.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="djb2.cpp" />
     <ClCompile Include="irsdk_diskserver.cpp" />
     <ClCompile Include="irsdk_memserver.cpp" />
     <ClCompile Include="irsdk_server.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="yaml_parser.cpp" />
-    <ClCompile Include="irsdk_utils.cpp" />
-    <ClCompile Include="yaml.cpp" />
     <ClCompile Include="MurmurHash3.cpp" />
-    <ClCompile Include="djb2.cpp" />
+    <ClCompile Include="yaml.cpp" />
+    <ClCompile Include="yaml_parser.cpp" />
   </ItemGroup>
 </Project>
