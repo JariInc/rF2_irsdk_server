@@ -52,6 +52,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static const char lapIndexString[] = "Lap";
 static const char sessionTimeString[] = "SessionTime";
 
+extern const char* g_vehicleName;
+extern const char* g_trackName;
+
 FILE *openUniqueFile(const char *name, const char *ext, time_t t_time, bool asBinary)
 {
 	FILE *file = NULL;
@@ -538,8 +541,12 @@ void initPathStr(char *path, int len)
 	path[len-1] = '\0';
 	_mkdir(path);
 
-	_snprintf(path, len,"c:\\temp\\irsdkLog");
-	path[len-1] = '\0';
+	_snprintf(path, len, "c:\\temp\\%s-%s-", g_vehicleName, g_trackName);
+	path[len-1] ='\0';
+
+	//_snprintf(path, len,"c:\\temp\\irsdkLog");
+	//path[len-1] = '\0';
+
 }
 
 //----

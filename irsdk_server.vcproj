@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="Windows-1252"?>
 <VisualStudioProject
 	ProjectType="Visual C++"
-	Version="9.00"
+	Version="9,00"
 	Name="irsdk_server"
 	ProjectGUID="{AB890443-8EB2-493B-BE63-9FB6CD0C97FB}"
 	RootNamespace="irsdk_server"
@@ -20,7 +20,7 @@
 			Name="Debug|Win32"
 			OutputDirectory="$(ConfigurationName)\$(PlatformName)"
 			IntermediateDirectory="$(ConfigurationName)\$(PlatformName)"
-			ConfigurationType="1"
+			ConfigurationType="2"
 			CharacterSet="2"
 			>
 			<Tool
@@ -47,9 +47,10 @@
 				MinimalRebuild="false"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="1"
+				StructMemberAlignment="1"
 				UsePrecompiledHeader="0"
 				WarningLevel="4"
-				WarnAsError="true"
+				WarnAsError="false"
 				DebugInformationFormat="4"
 			/>
 			<Tool
@@ -63,7 +64,9 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
+				AdditionalDependencies="D3D9.lib d3dx9d.lib dxguid.lib gdiplus.lib"
 				LinkIncremental="2"
+				AdditionalLibraryDirectories="&quot;C:\Program Files\Microsoft DirectX SDK (June 2010)\Lib\x86&quot;"
 				GenerateDebugInformation="true"
 				SubSystem="1"
 				TargetMachine="1"
@@ -180,6 +183,14 @@
 			</File>
 		</Filter>
 		<File
+			RelativePath=".\djb2.cpp"
+			>
+		</File>
+		<File
+			RelativePath=".\djb2.h"
+			>
+		</File>
+		<File
 			RelativePath=".\irsdk_diskserver.cpp"
 			>
 		</File>
@@ -205,6 +216,30 @@
 		</File>
 		<File
 			RelativePath=".\main.cpp"
+			>
+		</File>
+		<File
+			RelativePath=".\MurmurHash3.cpp"
+			>
+		</File>
+		<File
+			RelativePath=".\MurmurHash3.h"
+			>
+		</File>
+		<File
+			RelativePath=".\yaml.cpp"
+			>
+		</File>
+		<File
+			RelativePath=".\yaml.h"
+			>
+		</File>
+		<File
+			RelativePath=".\yaml_parser.cpp"
+			>
+		</File>
+		<File
+			RelativePath=".\yaml_parser.h"
 			>
 		</File>
 	</Files>

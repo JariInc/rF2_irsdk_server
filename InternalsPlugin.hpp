@@ -144,7 +144,7 @@ struct TelemWheelV01
   bool mFlat;                    // whether tire is flat
   bool mDetached;                // whether wheel is detached
 
-  double mVerticalTireDeflection;// how much is tire deflected from its (speed-sensitive) radius
+  double mVerticalTireDeflection; // how much is tire deflected from its (speed-sensitive) radius
   double mWheelYLocation;        // wheel's y location relative to vehicle y location
   double mToe;                   // current toe angle w.r.t. the vehicle
 
@@ -566,7 +566,7 @@ class InternalsPlugin : public PluginObject
   virtual void UpdateScoring( const ScoringInfoV01 &info ) {}  // update plugin with scoring info (approximately once per second)
 
   // GAME OUTPUT
-  virtual long WantsTelemetryUpdates() { return( true ); }        // whether we want telemetry updates (0=no 1=player-only 2=all vehicles)
+  virtual long WantsTelemetryUpdates() { return( 1 ); }        // whether we want telemetry updates (0=no 1=player-only 2=all vehicles)
   virtual void UpdateTelemetry( const TelemInfoV01 &info ) {}  // update plugin with telemetry info
 
   virtual bool WantsGraphicsUpdates() { return( true ); }     // whether we want graphics updates

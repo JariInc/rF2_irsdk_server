@@ -33,6 +33,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #pragma warning(disable: 4996) 
 
 #include <windows.h>
+#include <gdiplus.h>
+#include <D3D9.h>
+//#include <D3dx9tex.h>
+
 #include <stdio.h>
 #include <conio.h>
 #include <signal.h>
@@ -40,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <assert.h>
 #include <math.h>
 #include <stdlib.h>
+
 
 #include "irsdk_defines.h"
 #include "yaml.h"
@@ -54,7 +59,7 @@ const char * __cdecl GetPluginName()                   { return( "irsdk_server" 
 extern "C" __declspec( dllexport )
 PluginObjectType __cdecl GetPluginType()               { return( PO_INTERNALS ); }
 extern "C" __declspec( dllexport )
-int __cdecl GetPluginVersion()                         { return( 3 ); } // InternalsPluginV03 functionality
+int __cdecl GetPluginVersion()                         { return( 5 ); } // InternalsPluginV03 functionality
 extern "C" __declspec( dllexport )
 PluginObject * __cdecl CreatePluginObject()            { return( (PluginObject *) new rf2plugin ); }
 extern "C" __declspec( dllexport )
@@ -69,45 +74,227 @@ int rf2plugin::YAMLstring_len = 0;
 char rf2plugin::YAMLstring[irsdkServer::sessionStrLen] = "";
 unsigned int rf2plugin::YAMLchecksum = 0;
 
+// used to create the filename in irsdk_diskserver
+const char* g_vehicleName;
+const char* g_trackName;
+
+HHOOK g_wndProcHook =NULL;
+void* g_pluginInst;
+
+using namespace Gdiplus;
+
+
+LRESULT CALLBACK WndProcHook(int nCode, WPARAM wParam, LPARAM lParam)
+{
+	rf2plugin* rf2 =(rf2plugin*)g_pluginInst;
+	static unsigned int broadcastMsgId = RegisterWindowMessageA(IRSDK_BROADCASTMSGNAME);
+	CWPSTRUCT* cwp =(CWPSTRUCT*)lParam;
+
+	if (cwp !=NULL)
+	{
+		UINT message =cwp->message;
+		if(broadcastMsgId && message == broadcastMsgId) {
+
+			irsdk_BroadcastMsg msg =(irsdk_BroadcastMsg)LOWORD(cwp->wParam);
+			int var1 =HIWORD(cwp->wParam);
+			int var2 =LOWORD(cwp->lParam);
+			int var3 =HIWORD(cwp->wParam);
+			int var2DWord =(cwp->lParam & 0xFFFFFFFF);
+
+			switch(msg) {
+				
+				case irsdk_BroadcastCamSwitchPos:
+
+					rf2->m_newCam++;
+					if (rf2->m_newCam ==1005)
+						rf2->m_newCam =0;
+
+					rf2->m_switchCam =true;
+					break;
+
+				default:
+					break;
+			}
+		}
+	}
+
+	return CallNextHookEx(g_wndProcHook, nCode, wParam, lParam);
+}
+
+
 void rf2plugin::Startup( long version )
 {
+   GdiplusStartupInput gdiplusStartupInput;
+   GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL); 
+
+	ReadAndParseConfigFile();
 }
 
 
 void rf2plugin::Shutdown()
 {
+	GdiplusShutdown(gdiplusToken);
 }
 
+void rf2plugin::ReadAndParseConfigFile()
+{
+	char buf[MAX_PATH*2] ={0};
+	FILE* fp =NULL;
+	fopen_s(&fp, "irsdk_server.ini", "r");
+	if (fp !=NULL) {
+
+		while (feof(fp) ==0)
+		{
+			if (fgets(buf, MAX_PATH*2, fp) !=NULL) {
+
+				if (buf[0] =='\n' || buf[0] =='[' || buf[0] =='/')	// skip empty lines and section headers
+					continue;
+
+				char* tok =NULL;
+				char* nextTok =NULL;
+				tok =strtok_s(buf, "=\"", &nextTok);
+
+				if (tok !=NULL) {
+
+					if (strcmp(tok, "LogPath") ==0) {
+						tok =strtok_s(NULL, "=\"", &nextTok);
+						if (tok !=NULL) {
+							strcpy_s(m_config.logfilePath, MAX_PATH, tok);
+							int x =0;
+						}
+					}
+
+					if (strcmp(tok, "ActiveOnStart") ==0) {
+						tok =strtok_s(NULL, "=\"", &nextTok);
+						if (tok !=NULL) {
+							m_config.activateOnStartup = (atoi(tok) ? true : false);
+							int x =0;
+						}
+					}
+
+					if (strcmp(tok, "ActivationKey") ==0) {
+						tok =strtok_s(NULL, "=\"", &nextTok);
+						if (tok !=NULL) {
+							m_config.activationKey =tok[0];
+							int x =0;
+						}
+					}
+
+					if (strcmp(tok, "KeyModifier") ==0) {
+						tok =strtok_s(NULL, "=\"", &nextTok);
+						if (tok !=NULL) {
+							m_config.activationKeyModifier =(char)atoi(tok);
+							int x =0;
+						}
+					}
+
+					if (strcmp(tok, "DataRate") ==0) {
+						tok =strtok_s(NULL, "=\"", &nextTok);
+						if (tok !=NULL) {
+							m_config.dataRate =atoi(tok);
+							int x =0;
+						}
+					}
+
+					if (strcmp(tok, "LogAero") ==0) {
+						tok =strtok_s(NULL, "=\"", &nextTok);
+						if (tok !=NULL) {
+							m_config.logAeroData =(atoi(tok) ? true : false);
+							int x =0;
+						}
+					}
+
+					if (strcmp(tok, "WheelExtend") ==0) {
+						tok =strtok_s(NULL, "=\"", &nextTok);
+						if (tok !=NULL) {
+							m_config.logExtendedWheelData =(atoi(tok) ? true : false);
+							int x =0;
+						}
+					}
+
+				}
+			}
+		}
+
+		fclose(fp);
+	}
+}
 
 void rf2plugin::StartSession()
 {
+	g_pluginInst =(void*)this;
+
+	HINSTANCE hInst =GetModuleHandle("irsdk_server.dll");
+	g_wndProcHook =SetWindowsHookEx(WH_CALLWNDPROC, WndProcHook, hInst, GetCurrentThreadId());
+
 	// Generate random session id
 	srand(time(NULL));
 	g_sessionUniqueID = rand();
+
+	g_sessionTime =0;
+	m_EngineMaxRPM =-1;
+
+	m_bestLapComp =0;
+
+	for (int i=0; i < 3; i++)
+		m_sectorPos[i] =0.0f;
+
 }
 
 
 void rf2plugin::EndSession()
 {
+	UnhookWindowsHookEx(g_wndProcHook);
 }
 
 
 void rf2plugin::EnterRealtime()
 {
+	// use these to turn disk based logging on and off
+	if(!irsdkServer::instance()->isDiskLoggingEnabled()) // disk logging is turned on
+		irsdkServer::instance()->toggleDiskLogging(); // turn logging on or off
+	// --- logging to disk enabled, so the next call to pullSampleVars opens a new file
+
+	// needed here, because this value can change in garage for some vehicles
+	m_EngineMaxRPM =-1;
+
+	g_isInGarage =false;
+	g_isOnTrack =true;
 }
 
 
 void rf2plugin::ExitRealtime()
 {
+	g_isInGarage =true;
+	g_isOnTrack =false;
+
+	// write latest values to file
+	irsdkServer::instance()->pollSampleVars();
+
+	if(irsdkServer::instance()->isDiskLoggingEnabled()) // disk logging is turned on
+		irsdkServer::instance()->toggleDiskLogging(); // turn logging on or off
+
+	// logging to disk is diabled; call pollSampleVars once again to finalize and close the file
+	irsdkServer::instance()->pollSampleVars();
+
 }
+
 
 void rf2plugin::UpdateTelemetry( const TelemInfoV01 &info )
 {
+	g_vehicleName =&info.mVehicleName[0];
+	g_trackName =&info.mTrackName[0];
+
 	if(info.mElapsedTime > g_sessionTime) {
 		// before going into your main data output loop, you must mark the headers as final
 		// it is possible for finalizeHeader() to fail, so try every tick, just in case
 		if(!irsdkServer::instance()->isHeaderFinalized())
 			irsdkServer::instance()->finalizeHeader();
+
+		// reset the data for this pass, if something is not updated
+		// we will output zero for that tick ... and clear the garbage out of the vars if this is the first call
+		if(irsdkServer::instance()->isInitialized())
+			irsdkServer::instance()->resetSampleVars();
 
 		if(irsdkServer::instance()->isHeaderFinalized())
 		{
@@ -117,15 +304,110 @@ void rf2plugin::UpdateTelemetry( const TelemInfoV01 &info )
 			// update our data...
 			g_sessionTime = info.mElapsedTime;
 			g_replaySessionTime = info.mElapsedTime;
-			g_lap = info.mLapNumber;
 			g_replayFrameNum = (int)floor(g_sessionTime * TICKS_PER_SEC);
 
-			/*
-			// use these to turn disk based logging on and off
-			if(!irsdkServer::instance()->isDiskLoggingEnabled()) // disk logging is turned on
-				irsdkServer::instance()->toggleDiskLogging(); // turn logging on or off
-			//irsdkServer::instance()->isDiskLoggingActive(); // disk logging is actively writting to disk
-			*/
+			m_playerCarIdx =info.mID;
+
+			m_timingInfo.curLapTime =(float)(info.mElapsedTime - info.mLapStartET);
+
+			if (g_lap < info.mLapNumber) {
+				m_telemetryInfo.mLapDistPct =0.0f;
+			}
+			g_lap = info.mLapNumber;
+
+			if (m_EngineMaxRPM < 0) {
+				driverinfo.DriverCarRedLine  =m_EngineMaxRPM =info.mEngineMaxRPM;
+			}
+			for (int i =0; i < 3; i++)
+			{
+				// TODO: need to rotate coordinate system?
+				m_telemetryInfo.mPos[i] =info.mPos[i];
+				m_telemetryInfo.mLocalVel[i] =info.mLocalVel[i];
+			}
+
+			float x =(float)info.mLocalVel.x, y =(float)info.mLocalVel.y, z =(float)info.mLocalVel.z;
+			m_telemetryInfo.mSpeed =(float)sqrtf((x*x)+(y*y)+(z*z));
+			
+			// TODO: check if vert accel needs to be inverted
+			m_telemetryInfo.mLatAccel =(float)info.mLocalAccel.x; // * -1.0f;
+			m_telemetryInfo.mLongAccel =(float)info.mLocalAccel.z * -1.0f;
+			m_telemetryInfo.mVertAccel =(float)info.mLocalAccel.y;
+			
+			if (info.mOverheating) {
+				m_telemetryInfo.m_engineWarnings |=irsdk_waterTempWarning;
+			}
+			else {
+				m_telemetryInfo.m_engineWarnings &= ~irsdk_waterTempWarning;
+			}
+
+			if (info.mEngineRPM >= (info.mEngineMaxRPM - 10.0f)) {
+				m_telemetryInfo.m_engineWarnings |=irsdk_revLimiterActive;
+			}
+			else {
+				m_telemetryInfo.m_engineWarnings &= ~irsdk_revLimiterActive;
+			}
+
+			if (info.mSpeedLimiter) {
+				m_telemetryInfo.m_engineWarnings |=irsdk_pitSpeedLimiter;
+			}
+			else {
+				m_telemetryInfo.m_engineWarnings &= ~irsdk_pitSpeedLimiter;
+			}
+			// TODO: check if engine stalled 
+
+			// engine info
+			m_telemetryInfo.mGear =(int)info.mGear;
+			m_telemetryInfo.mEngineRPM =(float)info.mEngineRPM;
+			m_telemetryInfo.mEngineWaterTemp =(float)info.mEngineWaterTemp;
+			m_telemetryInfo.mEngineOilTemp =(float)info.mEngineOilTemp;
+			m_telemetryInfo.mClutchRPM =(float)info.mClutchRPM;
+			m_telemetryInfo.mEngineTq =(float)info.mEngineTq;
+			m_telemetryInfo.mIgnitionStarter =info.mIgnitionStarter;
+
+			// driver inputs
+			m_telemetryInfo.mUnfilteredBrake =(float)info.mUnfilteredBrake;
+			m_telemetryInfo.mUnfilteredClutch =(float)info.mUnfilteredClutch;
+			m_telemetryInfo.mUnfilteredSteering =(float)info.mUnfilteredSteering;
+			m_telemetryInfo.mUnfilteredThrottle =(float)info.mUnfilteredThrottle;
+
+			m_telemetryInfo.mFilteredBrake =(float)info.mFilteredBrake;
+			m_telemetryInfo.mFilteredClutch =(float)info.mFilteredClutch;
+			m_telemetryInfo.mFilteredSteering =(float)info.mFilteredSteering;
+			m_telemetryInfo.mFilteredThrottle =(float)info.mFilteredThrottle;
+
+			// global suspension info
+			m_telemetryInfo.mFrontRideHeight =(float)info.mFrontRideHeight;
+			m_telemetryInfo.mRearRideHeight =(float)info.mRearRideHeight;
+
+			m_telemetryInfo.mFuel =(float)info.mFuel;
+			m_telemetryInfo.mFuelCapacity =(float)info.mFuelCapacity;
+			m_telemetryInfo.mFuelLevelPct =(float)(info.mFuel/info.mFuelCapacity);
+
+			m_telemetryInfo.mSteeringArmForce =(float)info.mSteeringArmForce;
+
+			// wheel info
+			for (int i = 0; i < 4; i++)
+			{
+				m_telemetryInfo.mWheel[i].mRideHeight =(float)info.mWheel[i].mRideHeight;
+				m_telemetryInfo.mWheel[i].mSuspensionDeflection =(float)info.mWheel[i].mSuspensionDeflection;
+				m_telemetryInfo.mWheel[i].mSuspForce =(float)info.mWheel[i].mSuspForce;
+				m_telemetryInfo.mWheel[i].mBrakeTemp =(float)info.mWheel[i].mBrakeTemp;
+				m_telemetryInfo.mWheel[i].mBrakePressure =(float)info.mWheel[i].mBrakePressure;
+				m_telemetryInfo.mWheel[i].mTemperature[0] =(float)(info.mWheel[i].mTemperature[0] - 273.16f);
+				m_telemetryInfo.mWheel[i].mTemperature[1] =(float)(info.mWheel[i].mTemperature[1] - 273.16f);
+				m_telemetryInfo.mWheel[i].mTemperature[2] =(float)(info.mWheel[i].mTemperature[2] - 273.16f);
+				m_telemetryInfo.mWheel[i].mPressure =(float)info.mWheel[i].mPressure;
+				m_telemetryInfo.mWheel[i].mCamber =(float)info.mWheel[i].mCamber;
+				m_telemetryInfo.mWheel[i].mLateralForce =(float)info.mWheel[i].mLateralForce;
+				m_telemetryInfo.mWheel[i].mLateralGroundVel =(float)info.mWheel[i].mLateralGroundVel;
+				m_telemetryInfo.mWheel[i].mLateralPatchVel =(float)info.mWheel[i].mLateralPatchVel;
+				m_telemetryInfo.mWheel[i].mLongitudinalForce =(float)info.mWheel[i].mLongitudinalForce;
+				m_telemetryInfo.mWheel[i].mLongitudinalGroundVel =(float)info.mWheel[i].mLongitudinalGroundVel;
+				m_telemetryInfo.mWheel[i].mLongitudinalPatchVel =(float)info.mWheel[i].mLongitudinalPatchVel;
+				m_telemetryInfo.mWheel[i].mRotation =(float)info.mWheel[i].mRotation;
+				m_telemetryInfo.mWheel[i].mTireLoad =(float)info.mWheel[i].mTireLoad;
+				m_telemetryInfo.mWheel[i].mToe =(float)info.mWheel[i].mToe;
+			}
 		}
 	}
 
@@ -227,8 +509,10 @@ void rf2plugin::UpdateTelemetry( const TelemInfoV01 &info )
 
 void rf2plugin::UpdateGraphics( const GraphicsInfoV02 &info )
 {
-	g_camcaridx = info.mID + 1; 
-	g_camgroupnumber = info.mCameraType;
+	g_camcaridx = info.mID; 
+	m_newCam =g_camgroupnumber = info.mCameraType;
+
+
 	/*
   // Use the incoming data, for now I'll just write some of it to a file to a) make sure it
   // is working, and b) explain the coordinate system a little bit (see header for more info)
@@ -292,6 +576,7 @@ bool rf2plugin::ForceFeedback( float &forceValue )
   // Note that incoming value is the game's computation, in case you're interested.
 
   // CHANGE COMMENTS TO ENABLE FORCE EXAMPLE
+
   return( false );
 
   // I think the bounds are -11500 to 11500 ...
@@ -348,25 +633,56 @@ void rf2plugin::UpdateScoring( const ScoringInfoV01 &info )
 	if (info.mYellowFlagState == 5)
 		g_sessionFlags = irsdk_Flags::irsdk_white;
 
-	g_sessionTimeRemain = info.mEndET - info.mCurrentET;
-	VehicleScoringInfoV01 &leader = info.mVehicle[1];
-	g_sessionLapsRemain = info.mMaxLaps - leader.mTotalLaps;
+	// ---
+	if (m_playerCarIdx ==m_telemetryInfo.mID && info.mVehicle[m_playerCarIdx].mIsPlayer) {
 
+		if (m_curSector !=info.mVehicle[m_playerCarIdx].mSector) {
+
+			m_curSector =info.mVehicle[m_playerCarIdx].mSector;
+			m_sectorPos[m_curSector] =m_telemetryInfo.mLapDistPct;
+		}
+
+		m_telemetryInfo.mLapDist =(float)info.mVehicle[m_playerCarIdx].mLapDist;
+		m_telemetryInfo.mLapDistPct =(float)(m_telemetryInfo.mLapDist/info.mLapDist);
+
+		if (m_bestLapComp !=info.mVehicle[m_playerCarIdx].mBestLapTime) {
+
+			m_bestLapComp =info.mVehicle[m_playerCarIdx].mBestLapTime;
+			m_timingInfo.lapBestLap =g_lap - 1;	
+			m_timingInfo.bestLapTime =(float)m_bestLapComp;
+		}
+		m_timingInfo.lastLapTime =(float)info.mVehicle[m_playerCarIdx].mLastLapTime;
+	}
+	// ---
+
+	int leadrCarIdx =0;
 	for( long i = 0; i < info.mNumVehicles; ++i )
     {
 		VehicleScoringInfoV01 &vinfo = info.mVehicle[i];
-		int caridx = vinfo.mID+1;
-		g_carIdxLapDistPct[caridx] = vinfo.mLapDist/info.mLapDist;
-		g_carIdxLap[caridx] = vinfo.mTotalLaps;
-		if(vinfo.mPitState == 3)
-			g_carIdxTrackSurface[caridx] = irsdk_TrkLoc::irsdk_InPitStall;
-		else if(vinfo.mInPits && (vinfo.mLocalVel.x + vinfo.mLocalVel.x) < 0.1)
-			g_carIdxTrackSurface[caridx] = irsdk_TrkLoc::irsdk_NotInWorld;
-		else if(vinfo.mInPits)
-			g_carIdxTrackSurface[caridx] = irsdk_TrkLoc::irsdk_AproachingPits;
-		else
-			g_carIdxTrackSurface[caridx] = irsdk_TrkLoc::irsdk_OnTrack;
+		
+		if (vinfo.mID >= 0) {
+
+			if (vinfo.mPlace ==1) {
+				leadrCarIdx = vinfo.mID;
+			}
+
+			g_carIdxLapDistPct[vinfo.mID] = vinfo.mLapDist/info.mLapDist;
+			g_carIdxLap[vinfo.mID] = vinfo.mTotalLaps;
+			if(vinfo.mPitState == 3)
+				g_carIdxTrackSurface[vinfo.mID] = irsdk_TrkLoc::irsdk_InPitStall;
+			else if(vinfo.mInPits && (vinfo.mLocalVel.x + vinfo.mLocalVel.x) < 0.1)
+				g_carIdxTrackSurface[vinfo.mID] = irsdk_TrkLoc::irsdk_NotInWorld;
+			else if(vinfo.mInPits)
+				g_carIdxTrackSurface[vinfo.mID] = irsdk_TrkLoc::irsdk_AproachingPits;
+			else
+				g_carIdxTrackSurface[vinfo.mID] = irsdk_TrkLoc::irsdk_OnTrack;
+		}
 	}
+
+	VehicleScoringInfoV01 &leader =info.mVehicle[leadrCarIdx];
+	g_sessionTimeRemain = info.mEndET - info.mCurrentET;
+	g_sessionLapsRemain = info.mMaxLaps - leader.mTotalLaps;
+
 
 	// update YAML
 	YAMLupdate(info);
@@ -376,10 +692,10 @@ void rf2plugin::UpdateScoring( const ScoringInfoV01 &info )
 	if(prevchecksum != YAMLchecksum)
 		irsdkServer::instance()->regSessionInfo(YAMLstring);
 
-	FILE *fo = fopen("c:\\temp\\ExampleInternalsYAML.txt", "w");
+	FILE *fo = fopen("ExampleInternalsYAML.txt", "w");
 	if(fo != NULL)
 		fprintf(fo, "%s", YAMLstring);
-	fclose(fo);
+	fclose(fo); 
 
 	/*
   // Note: function is called twice per second now (instead of once per second in previous versions)
@@ -447,6 +763,124 @@ void rf2plugin::UpdateScoring( const ScoringInfoV01 &info )
   */
 }
 
+bool rf2plugin::WantsToViewVehicle(CameraControlInfoV01 &camControl)
+{
+	if (m_switchCam) {
+		camControl.mCameraType =m_newCam;
+		camControl.mID =0;
+
+		m_switchCam =false;
+		return true;
+	}
+
+	return false;
+}
+
+void rf2plugin::RenderScreenAfterOverlays(const ScreenInfoV01 &info)
+{
+	// TODO: add logo to screen to indicate logging to disk is active or not
+
+	LPDIRECT3DDEVICE9 dev =(LPDIRECT3DDEVICE9)info.mDevice;
+	if (dev !=NULL) {
+
+		LPDIRECT3DTEXTURE9 tex =(LPDIRECT3DTEXTURE9)info.mRenderTarget;
+		if (tex !=NULL) {
+			D3DSURFACE_DESC desc;
+
+			HRESULT hr =tex->GetLevelDesc(0, &desc);
+			if (SUCCEEDED(hr)) {
+				int x =0;
+			}
+		}
+
+		LPDIRECT3DSURFACE9 surf =NULL;
+		HRESULT hr =dev->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &surf);
+		if (SUCCEEDED(hr)) {
+			//HDC dc =NULL;
+			//hr =surf->GetDC(&dc);
+			D3DSURFACE_DESC desc;
+			D3DLOCKED_RECT lockRc ={0};
+			surf->GetDesc(&desc);
+			if (desc.Usage ==D3DUSAGE_RENDERTARGET)
+				int x =0xffff;
+
+			LPDIRECT3DSURFACE9 sf =NULL;
+			hr =dev->CreateOffscreenPlainSurface(desc.Width, desc.Height, desc.Format, D3DPOOL_SYSTEMMEM, &sf, NULL);
+			if (SUCCEEDED(hr)) {
+				hr =dev->GetRenderTargetData(surf, sf);
+				if (SUCCEEDED(hr)) {
+					hr =sf->LockRect(&lockRc, NULL, D3DLOCK_DONOTWAIT );
+					if (SUCCEEDED(hr)) {
+						int x =0;
+						sf->UnlockRect();
+
+					}
+				}
+			}
+			surf->Release();
+			surf =NULL;
+		}
+
+		//HRESULT hr =dev->GetRenderTarget(0, &surf);
+		//if (SUCCEEDED(hr)) {
+		//	//HDC dc =NULL;
+		//	//hr =surf->GetDC(&dc);
+		//	D3DSURFACE_DESC desc;
+		//	D3DLOCKED_RECT lockRc ={0};
+		//	surf->GetDesc(&desc);
+		//	if (desc.Usage ==D3DUSAGE_RENDERTARGET)
+		//		int x =0xffff;
+
+		//	//hr =surf->LockRect(&lockRc, NULL, D3DLOCK_DONOTWAIT );
+		//	void* container =NULL;
+		//	LPDIRECT3DTEXTURE9 tex =NULL;
+
+		//	hr =surf->GetContainer(IID_IDirect3DTexture9, &container);
+		//	if (SUCCEEDED(hr)  && container) {
+
+		//		tex =(LPDIRECT3DTEXTURE9)container;
+		//		hr =tex->GetLevelDesc(0, &desc);
+		//		if (SUCCEEDED(hr)) {
+		//			hr =tex->LockRect(0, &lockRc, NULL, 0);
+		//			if (SUCCEEDED(hr)) {
+
+		//				tex->UnlockRect(0);
+		//			}
+		//		}
+		//		tex->Release();
+		//		tex =NULL;
+		//	}
+		//	surf->Release();
+		//	surf =NULL;
+		//}
+	}
+
+	//Bitmap* bmp =new Bitmap(256,256, PixelFormat32bppARGB);
+	//if (bmp !=NULL) {
+	//	Graphics* gfx =Graphics::FromImage(bmp);
+	//	SolidBrush br(Color::Beige);
+
+	//	if (gfx !=NULL) {
+	//		gfx->FillRectangle(&br, 20,20,bmp->GetWidth(),bmp->GetHeight());
+	//		delete gfx;
+	//	}
+	//	
+	//	LPDIRECT3DTEXTURE9 tex =NULL;
+	//	HRESULT hr =D3DXCreateTexture((LPDIRECT3DDEVICE9)info.mDevice, bmp->GetWidth(), bmp->GetHeight(), 1, D3DUSAGE_DYNAMIC, D3DFMT_A8R8G8B8, D3DPOOL_SCRATCH, &tex);
+	//	if (D3D_OK ==hr) {
+	//		D3DLOCKED_RECT lr ={0};
+	//		hr =tex->LockRect(0, &lr, NULL, 0);
+	//		if (D3D_OK ==hr) {
+	//			tex->UnlockRect(0);
+	//			tex->Release();
+	//			tex =NULL;
+	//		}
+	//	}
+
+	//	delete bmp;
+	//}
+
+}
 
 bool rf2plugin::RequestCommentary( CommentaryRequestInfoV01 &info )
 {
@@ -474,6 +908,10 @@ bool rf2plugin::RequestCommentary( CommentaryRequestInfoV01 &info )
   */
   return( false );
   
+}
+
+void rf2plugin::SetEnvironment( const EnvironmentInfoV01 &info )
+{
 }
 
 /*

@@ -1,0 +1,9 @@
+
+TODO list:
+
+	- add support for a simple config file (*.ini) to set some parameters like logpath and how many variables are exported. At least which are written out to
+	  a file, which should help to hold the file smaller. Maybe adjust sample rate too?
+	
+	- add possibility to en/disable disk_based logging
+	
+	- show logo when logging to disk is active 

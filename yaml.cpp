@@ -98,7 +98,7 @@ void rf2plugin::YAMLupdate(const ScoringInfoV01 &info) {
 			//sessioninfo.Sessions[info.mSession].ResultsFastestLap.FastestLap = ; dunno
 		}
 
-		sessioninfo.Sessions[info.mSession].ResultsPositions[i].CarIdx = vinfo.mID+1;
+		sessioninfo.Sessions[info.mSession].ResultsPositions[i].CarIdx = vinfo.mID;
 		sessioninfo.Sessions[info.mSession].ResultsPositions[i].Position = vinfo.mPlace;
 		sessioninfo.Sessions[info.mSession].ResultsPositions[i].ClassPosition = vinfo.mPlace; // TODO
 		sessioninfo.Sessions[info.mSession].ResultsPositions[i].FastestTime = (float)vinfo.mBestLapTime;
@@ -126,7 +126,7 @@ void rf2plugin::YAMLupdate(const ScoringInfoV01 &info) {
 				break;
 		}
 
-		driverinfo.Drivers[i].CarIdx = vinfo.mID+1;
+		driverinfo.Drivers[i].CarIdx = vinfo.mID;
 		driverinfo.Drivers[i].UserID = djb2((unsigned char *)&vinfo.mDriverName) & 0xFFFFFF;
 		driverinfo.Drivers[i].CarID = djb2((unsigned char *)&vinfo.mVehicleName) & 0xFFFFFF;
 		driverinfo.Drivers[i].CarClassID = djb2((unsigned char *)&vinfo.mVehicleClass) & 0xFFFFFF;
@@ -135,7 +135,7 @@ void rf2plugin::YAMLupdate(const ScoringInfoV01 &info) {
 		strcpy(driverinfo.Drivers[i].CarClassShortName, vinfo.mVehicleClass);
 
 		if(vinfo.mIsPlayer) {
-			driverinfo.DriverCarIdx = vinfo.mID+1;
+			driverinfo.DriverCarIdx = vinfo.mID;
 		}
 	}
 	
@@ -318,11 +318,11 @@ void rf2plugin::YAMLgenerate() {
 	YPRINT("SplitTimeInfo:\n");
 	YPRINT(" Sectors:\n");
 	YPRINT(" - SectorNum: 0\n");
-	YPRINT("   SectorStartPct: 0.000\n");
+	YPRINT("   SectorStartPct: %1.3f\n", m_sectorPos[1]);
 	YPRINT(" - SectorNum: 1\n");
-	YPRINT("   SectorStartPct: 0.333\n");
+	YPRINT("   SectorStartPct: %1.3f\n", m_sectorPos[2]);
 	YPRINT(" - SectorNum: 2\n");
-	YPRINT("   SectorStartPct: 0.666\n");
+	YPRINT("   SectorStartPct: %1.3f\n", m_sectorPos[0]);
 	YPRINT("\n");
 
 	// end YAML
